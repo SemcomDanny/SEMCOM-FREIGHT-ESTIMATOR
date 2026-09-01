@@ -47,9 +47,11 @@ fail() {
 
 if [ ! -d node_modules ]; then
   echo "  First-time setup. This takes a few minutes - leave it running."
-  echo
-  npm install || fail
+else
+  echo "  Checking for updated components..."
 fi
+echo
+npm install || fail
 
 if [ ! -f .env ]; then
   echo
@@ -62,10 +64,10 @@ if [ ! -f .env ]; then
   read -r -p "  Press Enter to continue..."
 fi
 
-if [ ! -f web/dist/index.html ]; then
-  echo "  Preparing the application..."
-  npm run build || fail
-fi
+# Always rebuild. After an update the old build is still on disk, and skipping
+# this would quietly start the previous version.
+echo "  Preparing the application..."
+npm run build || fail
 
 echo
 npm start

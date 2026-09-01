@@ -40,10 +40,12 @@ if errorlevel 1 (
 
 if not exist "node_modules\" (
   echo   First-time setup. This takes a few minutes - leave it running.
-  echo.
-  call npm install
-  if errorlevel 1 goto failed
+) else (
+  echo   Checking for updated components...
 )
+echo.
+call npm install
+if errorlevel 1 goto failed
 
 if not exist ".env" (
   echo.
@@ -57,11 +59,11 @@ if not exist ".env" (
   pause
 )
 
-if not exist "web\dist\index.html" (
-  echo   Preparing the application...
-  call npm run build
-  if errorlevel 1 goto failed
-)
+REM Always rebuild. After an update the old build is still on disk, and
+REM skipping this would quietly start the previous version.
+echo   Preparing the application...
+call npm run build
+if errorlevel 1 goto failed
 
 echo.
 call npm start

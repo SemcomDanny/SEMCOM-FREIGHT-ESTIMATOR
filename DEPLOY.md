@@ -174,12 +174,22 @@ router changes, no exposed ports.
 
 ## Updating
 
+Stop the tool first — press **Ctrl+C** in the window it is running in — then
+double-click **Update to the latest version**. It fetches the new version,
+rebuilds, and starts it again.
+
+By hand, if you prefer:
+
 ```bash
 git pull
 npm install
 npm run build
 pm2 restart semcom-freight     # or stop and re-run `npm start`
 ```
+
+Do not skip the rebuild. `git pull` fetches the source; until it is rebuilt the
+tool keeps serving the previous version, which looks exactly like the update
+not working.
 
 Your database is untouched by an update. Take a backup first anyway.
 
