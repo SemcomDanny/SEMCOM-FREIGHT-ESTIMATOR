@@ -37,6 +37,11 @@ export const EXPORT_FIELDS: ExportField[] = [
   { key: 'density', defaultHeader: 'kg/CBM', value: (c) => round(c.metrics.densityKgPerCbm, 1) },
   { key: 'currency', defaultHeader: 'Currency', value: (c) => c.estimate.currency },
   { key: 'oceanCost', defaultHeader: 'Freight', value: (c) => round(c.estimate.oceanCost, 2) },
+  {
+    key: 'portCharges',
+    defaultHeader: 'Origin + Destination',
+    value: (c) => round(c.estimate.portChargesCost, 2),
+  },
   { key: 'ancillaries', defaultHeader: 'Ancillaries', value: (c) => round(c.estimate.ancillariesCost, 2) },
   { key: 'total', defaultHeader: 'Total', value: (c) => round(c.estimate.total, 2) },
   { key: 'fx', defaultHeader: 'FX to AUD', value: (c) => c.estimate.fxToAud },

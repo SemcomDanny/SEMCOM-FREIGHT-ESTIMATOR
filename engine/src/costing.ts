@@ -269,7 +269,10 @@ export interface EstimateOptions {
 }
 
 function finalise(
-  estimate: Omit<CostEstimate, 'total' | 'totalAud' | 'costPerCbm' | 'costPerCarton' | 'costPerUnit' | 'ancillariesCost'>,
+  estimate: Omit<
+    CostEstimate,
+    'total' | 'totalAud' | 'costPerCbm' | 'costPerCarton' | 'costPerUnit' | 'ancillariesCost'
+  >,
   ancillaries: CostComponent[],
   metrics: ConsignmentMetrics,
   fx: number,
@@ -353,6 +356,7 @@ export function estimateLcl(
       currency: card.currency,
       fxToAud: fx,
       oceanCost: price,
+      portChargesCost: 0,
       components: [ocean],
       warnings,
     },
@@ -374,6 +378,7 @@ export function estimateFcl(
   const warnings: string[] = [];
   const components: CostComponent[] = [];
   let ocean = 0;
+  let portCharges = 0;
   let containerCount = 0;
 
   for (const m of mixResult.mix) {
@@ -394,6 +399,7 @@ export function estimateFcl(
       sourceRateCardId: card.id,
     });
     if (rate.originCharges) {
+      portCharges += rate.originCharges * m.count;
       components.push({
         label: `Origin charges — ${typeName}`,
         amount: rate.originCharges * m.count,
@@ -403,6 +409,7 @@ export function estimateFcl(
       });
     }
     if (rate.destCharges) {
+      portCharges += rate.destCharges * m.count;
       components.push({
         label: `Destination charges (THC, wharfage, docs) — ${typeName}`,
         amount: rate.destCharges * m.count,
@@ -443,6 +450,7 @@ export function estimateFcl(
       currency: card.currency,
       fxToAud: fx,
       oceanCost: ocean,
+      portChargesCost: portCharges,
       components,
       containerMix: mixResult.mix,
       warnings,
@@ -474,6 +482,7 @@ export function estimateAir(
         currency: card.currency,
         fxToAud: fx,
         oceanCost: 0,
+        portChargesCost: 0,
         components: [],
         warnings: ['No airfreight rate on this card.'],
       },
@@ -551,6 +560,7 @@ export function estimateAir(
       currency: card.currency,
       fxToAud: fx,
       oceanCost: components.reduce((s, c) => s + c.amount, 0),
+      portChargesCost: 0,
       components,
       warnings,
     },

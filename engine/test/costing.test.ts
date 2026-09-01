@@ -150,6 +150,31 @@ describe('FCL estimate', () => {
     const nContainers = mix.mix.reduce((s, x) => s + x.count, 0);
     expect(e.ancillariesCost).toBeCloseTo(220 + 420 * nContainers, 4);
   });
+
+  it('reconciles: ocean + port charges + ancillaries equals the total', () => {
+    const lines = [line({ id: 'A', qty: 300 })];
+    const m = consignmentMetrics(lines);
+    const mix = optimiseContainerMix(
+      cartonPackItems(lines),
+      containers,
+      (id) => {
+        const r = fclCard.fcl!.find((f) => f.containerTypeId === id);
+        return r ? r.oceanCost + r.originCharges + r.destCharges : null;
+      },
+      0.85,
+    )!;
+    const e = estimateFcl(m, fclCard, mix, containers);
+    expect(e.portChargesCost).toBeGreaterThan(0);
+    expect(e.oceanCost + e.portChargesCost + e.ancillariesCost).toBeCloseTo(e.total, 6);
+    expect(e.components.reduce((s, c) => s + c.amount, 0)).toBeCloseTo(e.total, 6);
+  });
+
+  it('has no port charges on LCL or air, so the same reconciliation holds', () => {
+    const m = consignmentMetrics([line({ id: 'A', qty: 70 })]);
+    const e = estimateLcl(m, lclCard);
+    expect(e.portChargesCost).toBe(0);
+    expect(e.oceanCost + e.portChargesCost + e.ancillariesCost).toBeCloseTo(e.total, 6);
+  });
 });
 
 describe('airfreight', () => {

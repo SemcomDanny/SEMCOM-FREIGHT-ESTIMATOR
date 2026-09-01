@@ -301,7 +301,10 @@ export interface CostEstimate {
   basis: string;
   currency: string;
   fxToAud: number;
+  /** Ocean or air freight alone. */
   oceanCost: number;
+  /** Origin + destination charges (THC, wharfage, docs, ISPS). FCL only. */
+  portChargesCost: number;
   ancillariesCost: number;
   total: number;
   totalAud: number;
