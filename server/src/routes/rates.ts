@@ -50,10 +50,27 @@ ratesRouter.get('/active', (req, res) => {
     return;
   }
   const staleDays = Number(getSetting('stale_rate_days', '60'));
+  const today = asOf ?? new Date().toISOString().slice(0, 10);
   const out = MODES.map((mode) => {
     const card = activeRateCard(laneId, mode, asOf);
     const series = rateSeries(laneId, mode, { referenceCbm: Number(req.query.referenceCbm) || 5 });
-    return { mode, card, stale: isStale(series, staleDays), versions: series.length };
+    // A rate quoted with a future start date is a version that exists but is
+    // not in force. Without this the estimator sees "no rates" and has no way
+    // to know one is scheduled.
+    const upcoming = db
+      .prepare(
+        `SELECT effective_from FROM rate_cards
+         WHERE lane_id = ? AND mode = ? AND effective_from > ?
+         ORDER BY effective_from LIMIT 1`,
+      )
+      .get(laneId, mode, today) as { effective_from: string } | undefined;
+    return {
+      mode,
+      card,
+      stale: isStale(series, staleDays),
+      versions: series.length,
+      nextEffectiveFrom: upcoming?.effective_from ?? null,
+    };
   });
   res.json(out);
 });

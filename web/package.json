@@ -14,7 +14,7 @@
     "@semcom/engine": "*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.1",
+    "react-router-dom": "^7.18.3",
     "recharts": "^2.15.1",
     "three": "^0.172.0",
     "xlsx": "^0.18.5"

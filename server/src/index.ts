@@ -11,6 +11,7 @@ import { masterRouter } from './routes/master.js';
 import { ratesRouter } from './routes/rates.js';
 import { jobsRouter } from './routes/jobs.js';
 import { estimateRouter } from './routes/estimate.js';
+import { publicRfqRouter, rfqRouter } from './routes/rfq.js';
 import { seedIfEmpty } from './seed.js';
 
 assertProductionConfig();
@@ -41,6 +42,9 @@ app.use('/api/master', masterRouter);
 app.use('/api/rates', ratesRouter);
 app.use('/api/jobs', jobsRouter);
 app.use('/api/estimate', estimateRouter);
+app.use('/api/rfq', rfqRouter);
+// Unauthenticated: the forwarder has only their tokenised link.
+app.use('/api/public/rfq', publicRfqRouter);
 
 // Serve the built frontend when there is one (single-container deployment).
 const webDist = path.resolve(process.cwd(), 'web/dist');

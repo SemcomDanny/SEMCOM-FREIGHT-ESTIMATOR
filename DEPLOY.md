@@ -136,6 +136,29 @@ dying.
 To restore: stop the tool, copy the backup over `data/semcom.db`, start it
 again.
 
+## Sending rate requests to forwarders
+
+From the Rates tab you can send a forwarder a link that lets them type their
+LCL and FCL rates straight in — no account, no rate sheet to retype — and
+optionally attach their PDF quote. When it comes back you import it as a rate
+version in one click.
+
+This works with no setup: the tool creates the link and you send it from your
+own email. To have it emailed automatically, add your mail server details to
+`.env` (see `.env.example` for the settings).
+
+Two things to know:
+
+**The link is the credential.** Anyone holding it can submit rates against that
+lane, so treat it like an email address — it is not a secret worth panicking
+about, but do not post it publicly. Links expire; 21 days is the default.
+
+**Forwarders must be able to reach the machine.** A link pointing at
+`192.168.1.42` only works inside your office. If you want forwarders to use it
+from outside, that means exposing the tool to the internet, which is a bigger
+decision than it sounds — see the next section. Until then, the copy-the-link
+flow still saves the retyping, because you can paste the figures in yourself.
+
 ## Access from outside the office
 
 Do **not** forward port 4000 on your router. That puts your rate cards on the

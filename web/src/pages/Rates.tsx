@@ -24,6 +24,7 @@ import type { ContainerTypeRow, Lane, RateCardRow } from '../api';
 import { useAuth } from '../state/AuthContext';
 import { NumInput } from '../components/NumInput';
 import { Banner, Card, fmt } from '../components/ui';
+import { RfqRequests } from '../components/RfqRequests';
 
 interface AncillaryDraft {
   name: string;
@@ -225,6 +226,18 @@ export function Rates() {
       </div>
 
       {message && <Banner tone={message.tone === 'success' ? 'success' : 'error'}>{message.text}</Banner>}
+
+      {laneId && (
+        <RfqRequests
+          laneId={laneId}
+          laneLabel={
+            lanes.find((l) => l.id === laneId)
+              ? `${lanes.find((l) => l.id === laneId)!.origin_port} → ${lanes.find((l) => l.id === laneId)!.destination_port}`
+              : ''
+          }
+          onImported={loadVersions}
+        />
+      )}
 
       <div className="grid gap-3 lg:grid-cols-2">
         <Card

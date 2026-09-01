@@ -50,6 +50,8 @@ export interface ActiveRate {
   card: RateCard | null;
   stale: boolean;
   versions: number;
+  /** A version exists but does not take effect until this date. */
+  nextEffectiveFrom: string | null;
 }
 
 interface EstimateState {

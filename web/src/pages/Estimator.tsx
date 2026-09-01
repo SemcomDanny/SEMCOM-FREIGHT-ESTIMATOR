@@ -100,7 +100,9 @@ export function Estimator() {
             <>
               Rates in force:{' '}
               {est.activeRates.filter((r) => r.card).length === 0
-                ? 'none for this lane'
+                ? est.activeRates.some((r) => r.nextEffectiveFrom)
+                  ? `none yet — starts ${est.activeRates.find((r) => r.nextEffectiveFrom)!.nextEffectiveFrom}`
+                  : 'none for this lane'
                 : est.activeRates
                     .filter((r) => r.card)
                     .map((r) => `${r.mode} from ${r.card!.effectiveFrom}${r.stale ? ' (stale)' : ''}`)

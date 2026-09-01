@@ -38,6 +38,12 @@ resolves to the rates it was priced on. Rate history charts variance over time
 and offers a trailing average or linear trend as the estimating basis — always
 labelled Forecast, never Quoted.
 
+**Forwarder rate requests.** Send a forwarder a tokenised link from the Rates
+tab. They enter LCL and FCL figures and their ancillaries without an account,
+and can attach their PDF quote. You review it and import it as a normal rate
+version, forwarder named in the note. Email is sent via SMTP if configured, and
+otherwise the link is handed to you to send yourself.
+
 **Workflow.** A one-button forwarder RFQ email, CSV/XLSX/clipboard export with
 your own column headings and order, saved jobs with version history, invoiced
 actual vs estimate, and an indicative landed cost.

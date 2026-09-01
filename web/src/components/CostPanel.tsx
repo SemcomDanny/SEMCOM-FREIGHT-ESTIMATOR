@@ -14,13 +14,26 @@ export function CostPanel() {
     return comparison.estimates.find((e) => e.mode === selectedMode) ?? comparison.estimates[0] ?? null;
   }, [comparison, selectedMode]);
 
+  const scheduled = activeRates.filter((r) => !r.card && r.nextEffectiveFrom);
+
   if (!comparison || comparison.estimates.length === 0) {
     return (
       <Card title="Cost estimate">
-        <div className="p-4 text-sm text-slate-600">
-          {metrics.totalVolumeCbm <= 0
-            ? 'Enter carton dimensions and quantities to price this consignment.'
-            : 'No rate card is in force for this lane. An admin can add one under Rates.'}
+        <div className="space-y-2 p-4 text-sm text-slate-600">
+          {metrics.totalVolumeCbm <= 0 ? (
+            <p>Enter carton dimensions and quantities to price this consignment.</p>
+          ) : scheduled.length > 0 ? (
+            <Banner tone="warning">
+              <strong>Rates are entered but not in force yet.</strong>{' '}
+              {scheduled
+                .map((r) => `${r.mode} starts ${r.nextEffectiveFrom}`)
+                .join(', ')}
+              . Until then this lane has nothing to price against — change the effective date under
+              Rates if it should apply now.
+            </Banner>
+          ) : (
+            <p>No rate card is in force for this lane. An admin can add one under Rates.</p>
+          )}
         </div>
       </Card>
     );
@@ -44,6 +57,14 @@ export function CostPanel() {
             </>
           )}
           . Label it clearly if it reaches a client.
+        </Banner>
+      )}
+
+      {scheduled.length > 0 && comparison.estimates.length > 0 && (
+        <Banner tone="info">
+          A newer rate takes effect later:{' '}
+          {scheduled.map((r) => `${r.mode} on ${r.nextEffectiveFrom}`).join(', ')}. This estimate uses
+          what is in force today.
         </Banner>
       )}
 

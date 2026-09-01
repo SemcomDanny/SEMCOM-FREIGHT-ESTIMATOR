@@ -8,6 +8,7 @@ import { Login } from './pages/Login';
 const Rates = lazy(() => import('./pages/Rates').then((m) => ({ default: m.Rates })));
 const History = lazy(() => import('./pages/History').then((m) => ({ default: m.History })));
 import { Jobs } from './pages/Jobs';
+import { RfqPortal } from './pages/RfqPortal';
 import { Admin } from './pages/Admin';
 import { api } from './api';
 import { Spinner } from './components/ui';
@@ -135,6 +136,17 @@ function Shell() {
 
 export default function App() {
   const { user, loading } = useAuth();
+
+  // The forwarder RFQ page is reached from a tokenised link in an email, by
+  // someone with no account. It must render before any auth check, and never
+  // redirect to the sign-in screen.
+  if (window.location.pathname.startsWith('/rfq/')) {
+    return (
+      <Routes>
+        <Route path="/rfq/:token" element={<RfqPortal />} />
+      </Routes>
+    );
+  }
 
   if (loading) {
     return (

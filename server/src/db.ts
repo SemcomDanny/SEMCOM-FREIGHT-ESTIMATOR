@@ -203,6 +203,69 @@ export function migrate(): void {
       value TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS forwarders (
+      id TEXT PRIMARY KEY,
+      name TEXT,
+      email TEXT NOT NULL UNIQUE,
+      contact_name TEXT,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    );
+
+    -- A rate request sent to a forwarder. The token is the only credential the
+    -- forwarder has, so it is long, random, and expires.
+    CREATE TABLE IF NOT EXISTS rfq_requests (
+      id TEXT PRIMARY KEY,
+      token TEXT NOT NULL UNIQUE,
+      lane_id TEXT NOT NULL REFERENCES lanes(id),
+      forwarder_id TEXT NOT NULL REFERENCES forwarders(id),
+      job_id TEXT REFERENCES jobs(id),
+      currency TEXT NOT NULL DEFAULT 'AUD',
+      incoterm TEXT,
+      commodity TEXT,
+      cargo_ready_date TEXT,
+      notes TEXT,
+      /* Snapshot of the consignment at send time, so the forwarder sees what
+         was actually asked about even if the job is edited afterwards. */
+      consignment_json TEXT,
+      status TEXT NOT NULL DEFAULT 'sent'
+        CHECK (status IN ('sent','responded','imported','cancelled','expired')),
+      created_by TEXT REFERENCES users(id),
+      created_at TEXT NOT NULL,
+      sent_at TEXT,
+      expires_at TEXT NOT NULL,
+      responded_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_rfq_lane ON rfq_requests(lane_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_rfq_status ON rfq_requests(status);
+
+    -- What the forwarder submitted. Append-only: a corrected quote is a new
+    -- row, and the latest one wins, so nothing they sent is ever lost.
+    CREATE TABLE IF NOT EXISTS rfq_responses (
+      id TEXT PRIMARY KEY,
+      rfq_id TEXT NOT NULL REFERENCES rfq_requests(id) ON DELETE CASCADE,
+      submitted_at TEXT NOT NULL,
+      submitter_name TEXT,
+      submitter_email TEXT,
+      currency TEXT NOT NULL DEFAULT 'AUD',
+      fx_to_aud REAL NOT NULL DEFAULT 1,
+      valid_from TEXT,
+      valid_until TEXT,
+      transit_days INTEGER,
+      free_time_days INTEGER,
+      notes TEXT,
+      lcl_points_json TEXT,
+      lcl_min_charge REAL,
+      lcl_min_cbm REAL,
+      fcl_json TEXT,
+      ancillaries_json TEXT,
+      pdf_path TEXT,
+      pdf_original_name TEXT,
+      pdf_size INTEGER,
+      submitted_ip TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_rfq_resp ON rfq_responses(rfq_id, submitted_at DESC);
+
     -- Append-only audit trail. Never updated, never deleted.
     CREATE TABLE IF NOT EXISTS audit_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
