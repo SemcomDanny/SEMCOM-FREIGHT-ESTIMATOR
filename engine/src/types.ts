@@ -114,6 +114,12 @@ export interface Placement {
   weightKg: number;
   /** Stable colour index so the 3D view and the input table agree. */
   colorIndex: number;
+  /**
+   * Height of the pallet deck at the bottom of this item, mm, when the item is
+   * a built pallet. Lets the viewer draw the pallet distinctly from the cargo
+   * standing on it instead of one undifferentiated block. Absent for cartons.
+   */
+  deckHeightMm?: number;
 }
 
 export interface PackedContainer {
@@ -166,6 +172,8 @@ export interface PackItem {
   maxStackLayers?: number;
   /** Must keep its height axis vertical (no tipping). */
   thisWayUp?: boolean;
+  /** For a built pallet, the deck height included in hMm. */
+  deckHeightMm?: number;
 }
 
 /* ------------------------------------------------------------------ */

@@ -8,7 +8,6 @@ export const SEED_CONTAINER_TYPES: ContainerType[] = [
   { id: '20GP', name: "20' GP", intLMm: 5900, intWMm: 2350, intHMm: 2390, maxPayloadKg: 28000, active: true },
   { id: '40GP', name: "40' GP", intLMm: 12030, intWMm: 2350, intHMm: 2390, maxPayloadKg: 26500, active: true },
   { id: '40HC', name: "40' HC", intLMm: 12030, intWMm: 2350, intHMm: 2690, maxPayloadKg: 26500, active: true },
-  { id: '45HC', name: "45' HC", intLMm: 13550, intWMm: 2350, intHMm: 2690, maxPayloadKg: 27500, active: true },
 ];
 
 export const SEED_PALLET_TYPES: PalletType[] = [

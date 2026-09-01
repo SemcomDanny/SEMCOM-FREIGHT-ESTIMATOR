@@ -8,8 +8,10 @@ import { fmt } from './ui';
 
 /** mm to scene units (metres) so the camera and lights behave sensibly. */
 const S = 0.001;
-/** Shrink each box a hair so neighbouring cartons stay visually distinct. */
-const GAP_MM = 6;
+/** Shrink each carton a hair so neighbouring boxes do not z-fight. */
+const CARGO_INSET_MM = 4;
+/** Pallet decks render as timber so the load is obviously sitting on one. */
+const PALLET_DECK_COLOR = '#a16207';
 
 interface LegendEntry {
   colorIndex: number;
@@ -38,35 +40,122 @@ function ContainerShell({ type, transparent }: { type: ContainerType; transparen
   );
 }
 
+/** The 12 edges of a box, as vertex pairs for a LineSegments buffer. */
+const EDGE_PAIRS: [number, number][] = [
+  [0, 1], [1, 3], [3, 2], [2, 0], // bottom face
+  [4, 5], [5, 7], [7, 6], [6, 4], // top face
+  [0, 4], [1, 5], [2, 6], [3, 7], // uprights
+];
+
+/**
+ * One merged LineSegments holding the outline of every box.
+ *
+ * Without this, a stack of same-coloured cartons renders as one solid mass and
+ * you cannot see how many there are or where one ends. An InstancedMesh cannot
+ * carry per-instance edges, so the outlines are built once into a single
+ * geometry — 24 vertices per box, cheap enough for thousands of cartons in one
+ * draw call.
+ */
+function BoxEdges({ boxes, color, opacity = 1 }: { boxes: Box[]; color: string; opacity?: number }) {
+  const geometry = useMemo(() => {
+    const positions = new Float32Array(boxes.length * EDGE_PAIRS.length * 2 * 3);
+    let o = 0;
+    for (const b of boxes) {
+      const x0 = b.x * S;
+      const y0 = b.y * S;
+      const z0 = b.z * S;
+      const x1 = (b.x + b.l) * S;
+      const y1 = (b.y + b.h) * S;
+      const z1 = (b.z + b.w) * S;
+      // Corner order matches EDGE_PAIRS: bit 0 = x, bit 1 = z, bit 2 = y.
+      const corners: [number, number, number][] = [
+        [x0, y0, z0], [x1, y0, z0], [x0, y0, z1], [x1, y0, z1],
+        [x0, y1, z0], [x1, y1, z0], [x0, y1, z1], [x1, y1, z1],
+      ];
+      for (const [a, c] of EDGE_PAIRS) {
+        const p = corners[a]!;
+        const q = corners[c]!;
+        positions[o++] = p[0]; positions[o++] = p[1]; positions[o++] = p[2];
+        positions[o++] = q[0]; positions[o++] = q[1]; positions[o++] = q[2];
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    return g;
+  }, [boxes]);
+
+  useEffect(() => () => geometry.dispose(), [geometry]);
+
+  if (boxes.length === 0) return null;
+  return (
+    <lineSegments geometry={geometry}>
+      <lineBasicMaterial color={color} transparent={opacity < 1} opacity={opacity} />
+    </lineSegments>
+  );
+}
+
+/** A box in container-local mm, already split into deck and cargo where needed. */
+interface Box {
+  x: number;
+  y: number;
+  z: number;
+  l: number;
+  w: number;
+  h: number;
+}
+
 /** One instanced mesh per carton type keeps thousands of cartons interactive. */
-function PlacementGroup({ placements, color }: { placements: Placement[]; color: string }) {
+function BoxGroup({ boxes, color, inset }: { boxes: Box[]; color: string; inset: number }) {
   const ref = useRef<THREE.InstancedMesh>(null);
 
   useEffect(() => {
     const mesh = ref.current;
     if (!mesh) return;
     const dummy = new THREE.Object3D();
-    placements.forEach((p, i) => {
-      const l = Math.max(p.lMm - GAP_MM, 1) * S;
-      const w = Math.max(p.wMm - GAP_MM, 1) * S;
-      const h = Math.max(p.hMm - GAP_MM, 1) * S;
-      dummy.position.set((p.x + p.lMm / 2) * S, (p.z + p.hMm / 2) * S, (p.y + p.wMm / 2) * S);
-      dummy.scale.set(l, h, w);
+    boxes.forEach((b, i) => {
+      dummy.position.set((b.x + b.l / 2) * S, (b.y + b.h / 2) * S, (b.z + b.w / 2) * S);
+      dummy.scale.set(
+        Math.max(b.l - inset, 1) * S,
+        Math.max(b.h - inset, 1) * S,
+        Math.max(b.w - inset, 1) * S,
+      );
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
     });
-    mesh.count = placements.length;
+    mesh.count = boxes.length;
     mesh.instanceMatrix.needsUpdate = true;
-  }, [placements]);
+  }, [boxes, inset]);
 
-  if (placements.length === 0) return null;
+  if (boxes.length === 0) return null;
 
   return (
-    <instancedMesh ref={ref} args={[undefined, undefined, placements.length]} castShadow>
+    <instancedMesh ref={ref} args={[undefined, undefined, boxes.length]} castShadow>
       <boxGeometry args={[1, 1, 1]} />
       <meshStandardMaterial color={color} roughness={0.65} metalness={0.05} />
     </instancedMesh>
   );
+}
+
+/**
+ * Split placements into what actually gets drawn.
+ *
+ * A palletised item arrives as one block covering deck plus cargo. Drawn that
+ * way you cannot tell there is a pallet under the load at all, so it is split
+ * into a deck slab and the cargo standing on it.
+ */
+function toBoxes(placements: Placement[]): { cargo: Box[]; decks: Box[] } {
+  const cargo: Box[] = [];
+  const decks: Box[] = [];
+  for (const p of placements) {
+    const deck = p.deckHeightMm ?? 0;
+    if (deck > 0 && deck < p.hMm) {
+      decks.push({ x: p.x, y: p.z, z: p.y, l: p.lMm, w: p.wMm, h: deck });
+      cargo.push({ x: p.x, y: p.z + deck, z: p.y, l: p.lMm, w: p.wMm, h: p.hMm - deck });
+    } else {
+      cargo.push({ x: p.x, y: p.z, z: p.y, l: p.lMm, w: p.wMm, h: p.hMm });
+    }
+  }
+  return { cargo, decks };
 }
 
 type ViewPreset = 'iso' | 'top' | 'side' | 'door';
@@ -162,8 +251,17 @@ export function Viewer3D({
       if (list) list.push(p);
       else byColor.set(p.colorIndex, [p]);
     }
-    return [...byColor.entries()];
+    return [...byColor.entries()].map(([colorIndex, placements]) => ({
+      colorIndex,
+      ...toBoxes(placements),
+    }));
   }, [visible]);
+
+  const allBoxes = useMemo(
+    () => groups.flatMap((g) => [...g.cargo, ...g.decks]),
+    [groups],
+  );
+  const hasPallets = useMemo(() => groups.some((g) => g.decks.length > 0), [groups]);
 
   const handleCapture = (dataUrl: string) => {
     onImageCaptured?.(dataUrl);
@@ -234,9 +332,14 @@ export function Viewer3D({
             position={[type.intLMm * S * 0.5, -0.002, type.intWMm * S * 0.5]}
           />
           <ContainerShell type={type} transparent={transparent} />
-          {groups.map(([colorIndex, placements]) => (
-            <PlacementGroup key={colorIndex} placements={placements} color={colorFor(colorIndex)} />
+          {groups.map((g) => (
+            <group key={g.colorIndex}>
+              <BoxGroup boxes={g.cargo} color={colorFor(g.colorIndex)} inset={CARGO_INSET_MM} />
+              <BoxGroup boxes={g.decks} color={PALLET_DECK_COLOR} inset={0} />
+            </group>
           ))}
+          {/* Drawn last, over the solid boxes, so every carton reads separately. */}
+          <BoxEdges boxes={allBoxes} color="#0f172a" opacity={0.55} />
           <CameraRig type={type} preset={preset} nonce={nonce} />
           <Capture trigger={captureTrigger} onReady={handleCapture} />
         </Canvas>
@@ -285,6 +388,18 @@ export function Viewer3D({
               <span className="tabular text-slate-500">×{entry.count}</span>
             </button>
           ))}
+          {hasPallets && (
+            <span
+              className="flex items-center gap-1.5 rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600"
+              title="The pallet deck under each load"
+            >
+              <span
+                className="inline-block h-3 w-3 rounded-sm"
+                style={{ backgroundColor: PALLET_DECK_COLOR }}
+              />
+              Pallet deck
+            </span>
+          )}
           {isolated !== null && (
             <button className="btn-ghost text-xs" onClick={() => setIsolated(null)}>
               Show all types

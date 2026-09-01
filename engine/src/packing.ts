@@ -194,6 +194,7 @@ export function packContainer(
             hMm: o.h,
             weightKg: item.weightKg,
             colorIndex: item.colorIndex,
+            deckHeightMm: item.deckHeightMm,
           });
           placedInBlock++;
           usedX = Math.max(usedX, (i + 1) * o.l);

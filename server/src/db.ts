@@ -217,6 +217,31 @@ export function migrate(): void {
   `);
 }
 
+/**
+ * One-off data migrations for databases created by an earlier version.
+ *
+ * Each is guarded by a settings flag so it runs once and never fights an
+ * admin who deliberately puts something back.
+ */
+export function runDataMigrations(): void {
+  if (getSetting('retired_45hc', '') !== 'done') {
+    // 45' HC was seeded originally and is no longer wanted. Rate history must
+    // stay intact, so it is only deleted when nothing references it; otherwise
+    // it is deactivated and disappears from the estimator either way.
+    const used = (
+      db.prepare('SELECT COUNT(*) AS n FROM fcl_rates WHERE container_type_id = ?').get('45HC') as
+        | { n: number }
+        | undefined
+    )?.n ?? 0;
+    if (used > 0) {
+      db.prepare('UPDATE container_types SET active = 0 WHERE id = ?').run('45HC');
+    } else {
+      db.prepare('DELETE FROM container_types WHERE id = ?').run('45HC');
+    }
+    setSetting('retired_45hc', 'done');
+  }
+}
+
 export function audit(
   entity: string,
   entityId: string,

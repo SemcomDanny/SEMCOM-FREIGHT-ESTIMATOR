@@ -49,6 +49,7 @@ export function palletPackItems(
         // budget is there; the packer decides, the flag just permits it.
         stackable: line.stackable !== false,
         thisWayUp: true,
+        deckHeightMm: palletType.deckHMm,
       });
     }
     if (b.remainderCartons > 0 && b.cartonsPerLayer > 0) {
@@ -64,6 +65,7 @@ export function palletPackItems(
         colorIndex: i,
         stackable: line.stackable !== false,
         thisWayUp: true,
+        deckHeightMm: palletType.deckHMm,
       });
     }
   });

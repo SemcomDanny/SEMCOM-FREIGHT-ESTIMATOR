@@ -32,7 +32,7 @@ export function Admin() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [audit, setAudit] = useState<AuditRow[]>([]);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ text: string; tone: 'success' | 'error' } | null>(null);
   const [newLane, setNewLane] = useState({ originPort: '', destinationPort: '' });
   const [newUser, setNewUser] = useState({ email: '', name: '', role: 'estimator', password: '' });
 
@@ -56,9 +56,9 @@ export function Admin() {
 
   useEffect(reload, [isAdmin]);
 
-  const flash = (text: string) => {
-    setMessage(text);
-    setTimeout(() => setMessage(null), 5000);
+  const flash = (text: string, tone: 'success' | 'error' = 'success') => {
+    setMessage({ text, tone });
+    setTimeout(() => setMessage(null), 8000);
   };
 
   if (!isAdmin) {
@@ -71,7 +71,7 @@ export function Admin() {
 
   return (
     <div className="space-y-3">
-      {message && <Banner tone="success">{message}</Banner>}
+      {message && <Banner tone={message.tone}>{message.text}</Banner>}
 
       <Card
         title="Container types"
@@ -239,7 +239,10 @@ export function Admin() {
       </Card>
 
       <div className="grid gap-3 lg:grid-cols-2">
-        <Card title="Lanes">
+        <Card
+          title="Lanes"
+          subtitle="Deactivate to hide a lane from the estimator; delete only removes one nothing refers to"
+        >
           <table className="w-full">
             <tbody className="divide-y divide-slate-100">
               {lanes.map((l) => (
@@ -247,17 +250,43 @@ export function Admin() {
                   <td className="td">
                     {l.origin_port} → {l.destination_port}
                   </td>
-                  <td className="td w-24 text-right">
-                    <label className="inline-flex items-center gap-1.5 text-xs">
-                      <input
-                        type="checkbox"
-                        checked={l.active === 1}
-                        onChange={(e) => {
-                          void api.patch(`/master/lanes/${l.id}`, { active: e.target.checked }).then(reload);
+                  <td className="td w-40 text-right">
+                    <div className="flex items-center justify-end gap-3">
+                      <label className="inline-flex items-center gap-1.5 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={l.active === 1}
+                          onChange={(e) => {
+                            void api.patch(`/master/lanes/${l.id}`, { active: e.target.checked }).then(reload);
+                          }}
+                        />
+                        Active
+                      </label>
+                      <button
+                        className="rounded px-1.5 py-1 text-xs text-red-600 hover:bg-red-50"
+                        title="Delete this lane"
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              `Delete ${l.origin_port} → ${l.destination_port}?\n\n` +
+                                `This cannot be undone. It will be refused if any rate version or job ` +
+                                `still refers to the lane.`,
+                            )
+                          ) {
+                            return;
+                          }
+                          void api
+                            .del(`/master/lanes/${l.id}`)
+                            .then(() => {
+                              reload();
+                              flash(`Deleted ${l.origin_port} → ${l.destination_port}.`);
+                            })
+                            .catch((e: Error) => flash(e.message, 'error'));
                         }}
-                      />
-                      Active
-                    </label>
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -285,7 +314,7 @@ export function Admin() {
                     setNewLane({ originPort: '', destinationPort: '' });
                     reload();
                   })
-                  .catch((e: Error) => flash(e.message));
+                  .catch((e: Error) => flash(e.message, 'error'));
               }}
             >
               Add lane
@@ -426,7 +455,7 @@ export function Admin() {
                   reload();
                   flash('User created.');
                 })
-                .catch((e: Error) => flash(e.message));
+                .catch((e: Error) => flash(e.message, 'error'));
             }}
           >
             Add user

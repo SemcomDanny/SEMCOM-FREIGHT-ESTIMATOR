@@ -32,6 +32,51 @@ masterRouter.post('/lanes', requireAdmin, (req, res) => {
   res.status(201).json(db.prepare('SELECT * FROM lanes WHERE id = ?').get(id));
 });
 
+/**
+ * Delete a lane.
+ *
+ * Refused while anything still points at it: rate versions are the audit trail
+ * behind past estimates and jobs are the quote record, so neither may be
+ * orphaned. Deactivating hides a lane from the estimator without destroying
+ * that history, which is what you want almost every time.
+ */
+masterRouter.delete('/lanes/:id', requireAdmin, (req, res) => {
+  const lane = db.prepare('SELECT * FROM lanes WHERE id = ?').get(req.params.id) as
+    | { origin_port: string; destination_port: string }
+    | undefined;
+  if (!lane) {
+    res.status(404).json({ error: 'Lane not found' });
+    return;
+  }
+
+  const rateVersions = (
+    db.prepare('SELECT COUNT(*) AS n FROM rate_cards WHERE lane_id = ?').get(req.params.id) as { n: number }
+  ).n;
+  const jobs = (
+    db.prepare('SELECT COUNT(*) AS n FROM jobs WHERE lane_id = ?').get(req.params.id) as { n: number }
+  ).n;
+
+  if (rateVersions > 0 || jobs > 0) {
+    const parts: string[] = [];
+    if (rateVersions > 0) parts.push(`${rateVersions} rate version(s)`);
+    if (jobs > 0) parts.push(`${jobs} job(s)`);
+    res.status(409).json({
+      error:
+        `${lane.origin_port} → ${lane.destination_port} still has ${parts.join(' and ')} against it. ` +
+        `Deleting it would orphan that history. Deactivate the lane instead — it disappears from the ` +
+        `estimator and keeps the record.`,
+    });
+    return;
+  }
+
+  db.prepare('DELETE FROM lanes WHERE id = ?').run(req.params.id);
+  audit('lanes', req.params.id, 'deleted', req.user!.id, {
+    originPort: lane.origin_port,
+    destinationPort: lane.destination_port,
+  });
+  res.json({ ok: true });
+});
+
 masterRouter.patch('/lanes/:id', requireAdmin, (req, res) => {
   const { active } = req.body ?? {};
   db.prepare('UPDATE lanes SET active = ? WHERE id = ?').run(active ? 1 : 0, req.params.id);

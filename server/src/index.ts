@@ -4,7 +4,7 @@ import cors from 'cors';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { migrate } from './db.js';
+import { migrate, runDataMigrations } from './db.js';
 import { assertProductionConfig } from './security.js';
 import { authRouter } from './routes/auth.js';
 import { masterRouter } from './routes/master.js';
@@ -16,6 +16,7 @@ import { seedIfEmpty } from './seed.js';
 assertProductionConfig();
 migrate();
 seedIfEmpty();
+runDataMigrations();
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 4000);
