@@ -25,11 +25,18 @@ run these one at a time:
 ```bash
 git clone https://github.com/SemcomDanny/SEMCOM-FREIGHT-ESTIMATOR.git
 cd SEMCOM-FREIGHT-ESTIMATOR
+git checkout claude/freight-estimate-container-tool-ryc7mq
 npm install
 npm run setup
 npm run build
 npm start
 ```
+
+Run them one at a time and wait for each to finish.
+
+The third line is only needed until this work is merged into the `main`
+branch. Without it you get an empty folder and `npm install` says it cannot
+find `package.json`.
 
 `npm install` takes a few minutes the first time. `npm run setup` prints a
 generated admin password — **write it down before you continue**, it is not
@@ -147,6 +154,10 @@ pm2 restart semcom-freight     # or stop and re-run `npm start`
 Your database is untouched by an update. Take a backup first anyway.
 
 ## When something goes wrong
+
+**"Could not read package.json"** — the folder is on the `main` branch, which
+is empty. Run `git checkout claude/freight-estimate-container-tool-ryc7mq` in
+that folder and try again.
 
 **"Port 4000 is already in use"** — the tool is already running in another
 window, or something else has the port. Close the other window, or set a

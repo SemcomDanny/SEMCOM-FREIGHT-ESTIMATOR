@@ -45,10 +45,16 @@ actual vs estimate, and an indicative landed cost.
 ## Running it
 
 ```bash
+git clone https://github.com/SemcomDanny/SEMCOM-FREIGHT-ESTIMATOR.git
+cd SEMCOM-FREIGHT-ESTIMATOR
+git checkout claude/freight-estimate-container-tool-ryc7mq
 npm install
-cp .env.example .env      # set JWT_SECRET and SEED_ADMIN_PASSWORD
-npm run dev               # API on :4000, Vite on :5173
+npm run setup
+npm run dev
 ```
+
+The `git checkout` line is only needed until this work reaches `main`. `npm run
+dev` puts the API on :4000 and Vite on :5173.
 
 Sign in with the seeded admin (`SEED_ADMIN_EMAIL`, default
 `admin@sem.com.au`). **Change that password before anyone else uses the tool.**
