@@ -23,8 +23,11 @@ everything in a single file.
 
 ## Setting it up
 
-Open a terminal (Command Prompt or PowerShell on Windows, Terminal on Mac) and
-run these one at a time:
+On Windows use **Command Prompt**, not PowerShell — PowerShell blocks npm by
+default with a message about "running scripts is disabled on this system".
+Press Start, type `cmd`, and open Command Prompt. On a Mac, use Terminal.
+
+Run these one at a time:
 
 ```bash
 git clone https://github.com/SemcomDanny/SEMCOM-FREIGHT-ESTIMATOR.git
@@ -181,6 +184,18 @@ pm2 restart semcom-freight     # or stop and re-run `npm start`
 Your database is untouched by an update. Take a backup first anyway.
 
 ## When something goes wrong
+
+**"npm.ps1 cannot be loaded because running scripts is disabled"** — you are in
+PowerShell. Open Command Prompt instead (Start, type `cmd`) and run the same
+command there. Nothing is wrong with the install.
+
+**"Your local changes to the following files would be overwritten by merge"** on
+`git pull` — an earlier failed install edited `package-lock.json`. Run
+`git checkout -- package-lock.json` to throw that edit away, then pull again.
+
+**Sign-in fails right after setting up by hand** — a `.env` copied from
+`.env.example` has no `JWT_SECRET`. Run `npm run setup`, which replaces an
+unconfigured `.env` with a working one.
 
 **Pages of red `gyp ERR!` text mentioning Visual Studio** — your Node version
 has no pre-compiled database build, so npm tried to compile one. Install Node
