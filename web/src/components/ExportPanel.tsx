@@ -55,9 +55,9 @@ export function ExportPanel({ estimate }: { estimate: CostEstimate | null }) {
       estimate,
       rateCardId: estimate.components[0]?.sourceRateCardId,
       calculatedAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
-      forecastLabel: 'Quoted',
+      forecastLabel: est.rateBasisLabel,
     };
-  }, [estimate, est.job, est.metrics, lane]);
+  }, [estimate, est.job, est.metrics, est.rateBasisLabel, lane]);
 
   const rows = useMemo(() => {
     if (!context) return { header: [] as string[], body: [] as (string | number)[] };

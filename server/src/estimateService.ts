@@ -19,6 +19,7 @@ import {
   isStale,
   palletPackItems,
   palletiseAll,
+  applyForecastRatio,
   validateAll,
   validatePalletBuild,
   validatePalletInContainer,
@@ -89,37 +90,6 @@ export function loadPalletType(id: string): PalletType | null {
     overhangMm: Number(r.overhang_mm),
     active: Number(r.active) === 1,
   };
-}
-
-/**
- * Rescale a rate card's freight costs by a forecast ratio.
- *
- * The forecast is a view on where the rate has been heading, so it is applied
- * as a multiplier on the freight component of the current version. Ancillaries
- * are left alone — they do not move with the ocean market.
- */
-function applyForecastRatio(card: RateCard, ratio: number): RateCard {
-  if (!Number.isFinite(ratio) || ratio <= 0 || Math.abs(ratio - 1) < 1e-9) return card;
-  const scaled: RateCard = { ...card };
-  if (card.fcl) {
-    scaled.fcl = card.fcl.map((f) => ({
-      ...f,
-      oceanCost: f.oceanCost * ratio,
-      originCharges: f.originCharges * ratio,
-      destCharges: f.destCharges * ratio,
-    }));
-  }
-  if (card.lclPoints) {
-    scaled.lclPoints = card.lclPoints.map((p) => ({ ...p, totalPrice: p.totalPrice * ratio }));
-  }
-  if (card.air) {
-    scaled.air = {
-      ...card.air,
-      minCharge: card.air.minCharge * ratio,
-      breaks: card.air.breaks.map((b) => ({ ...b, ratePerKg: b.ratePerKg * ratio })),
-    };
-  }
-  return scaled;
 }
 
 /** Run the full estimate: metrics, packing, costing and comparison. */

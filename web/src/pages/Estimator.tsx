@@ -73,6 +73,26 @@ export function Estimator() {
             onChange={(e) => est.setJob({ client: e.target.value })}
           />
         </label>
+        <label className="block">
+          <span className="label">Estimating basis</span>
+          <select
+            className="field mt-1 w-56"
+            value={`${est.forecastMethod}:${est.forecastWindowMonths}`}
+            onChange={(e) => {
+              const [method, months] = e.target.value.split(':');
+              est.setForecastMethod(method as typeof est.forecastMethod);
+              est.setForecastWindowMonths(Number(months));
+            }}
+          >
+            <option value="latest:6">Latest quoted rate</option>
+            <option value="trailing_average:3">Forecast — 3-month trailing avg</option>
+            <option value="trailing_average:6">Forecast — 6-month trailing avg</option>
+            <option value="trailing_average:12">Forecast — 12-month trailing avg</option>
+            <option value="linear_trend:6">Forecast — linear trend (6 mo)</option>
+            <option value="linear_trend:12">Forecast — linear trend (12 mo)</option>
+          </select>
+        </label>
+
         <div className="ml-auto text-xs text-slate-500">
           {est.ratesLoading ? (
             <Spinner label="Loading rates" />

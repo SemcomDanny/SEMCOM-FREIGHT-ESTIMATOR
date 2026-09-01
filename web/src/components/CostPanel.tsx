@@ -30,6 +30,23 @@ export function CostPanel() {
 
   return (
     <div className="space-y-3">
+      {est.forecastMethod !== 'latest' && (
+        <Banner tone="warning">
+          <strong>Forecast basis — not a quoted rate.</strong> Freight is priced on the{' '}
+          {est.rateBasisLabel.replace('Forecast — ', '')}
+          {Object.keys(est.forecastRatios).length > 0 && (
+            <>
+              {' '}(
+              {Object.entries(est.forecastRatios)
+                .map(([mode, ratio]) => `${mode} ${(ratio! * 100 - 100 >= 0 ? '+' : '')}${(ratio! * 100 - 100).toFixed(1)}%`)
+                .join(', ')}{' '}
+              against the latest quote)
+            </>
+          )}
+          . Label it clearly if it reaches a client.
+        </Banner>
+      )}
+
       {staleModes.length > 0 && (
         <Banner tone="warning">
           <strong>Stale rates.</strong>{' '}

@@ -5,6 +5,7 @@ export * from './paste.js';
 export * from './pallets.js';
 export * from './packing.js';
 export * from './curve.js';
+export * from './rateAdjust.js';
 export * from './costing.js';
 export * from './compare.js';
 export * from './stats.js';

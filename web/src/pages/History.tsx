@@ -248,7 +248,8 @@ export function History() {
               </tbody>
             </table>
             <p className="border-t border-slate-200 px-4 py-2 text-xs text-slate-500">
-              Pick a forecast basis on the estimator screen to price against it instead of the latest quote.
+              Choose one of these under "Estimating basis" on the estimator screen to price against it
+              instead of the latest quote. Forecast bases are labelled on the estimate and in the export.
             </p>
           </Card>
         </div>

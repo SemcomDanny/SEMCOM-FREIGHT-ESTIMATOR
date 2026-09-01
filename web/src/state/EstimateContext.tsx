@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
+  applyForecastRatio,
   cartonPackItems,
   compareModes,
   consignmentMetrics,
@@ -13,6 +14,8 @@ import {
 import type {
   CartonLine,
   Comparison,
+  ForecastMethod,
+  ForecastResult,
   ConsignmentMetrics,
   ContainerType,
   Issue,
@@ -85,6 +88,16 @@ interface EstimateState {
 
   job: JobMeta;
   setJob: (patch: Partial<JobMeta>) => void;
+
+  /* Estimating basis: the latest quoted rate, or a forecast from history. */
+  forecastMethod: ForecastMethod;
+  setForecastMethod: (m: ForecastMethod) => void;
+  forecastWindowMonths: number;
+  setForecastWindowMonths: (m: number) => void;
+  /** Human-readable basis, e.g. "Forecast — 6-month trailing average". */
+  rateBasisLabel: string;
+  /** Per-mode multiplier applied to freight when a forecast basis is chosen. */
+  forecastRatios: Partial<Record<ShipMode, number>>;
 
   activeRates: ActiveRate[];
   ratesLoading: boolean;
@@ -166,6 +179,9 @@ export function EstimateProvider({ children }: { children: ReactNode }) {
   const [activeRates, setActiveRates] = useState<ActiveRate[]>([]);
   const [ratesLoading, setRatesLoading] = useState(false);
   const [selectedMode, setSelectedMode] = useState<ShipMode | null>(null);
+  const [forecastMethod, setForecastMethod] = useState<ForecastMethod>('latest');
+  const [forecastWindowMonths, setForecastWindowMonths] = useState(6);
+  const [forecastRatios, setForecastRatios] = useState<Partial<Record<ShipMode, number>>>({});
   const [job, setJobState] = useState<JobMeta>({
     id: null,
     ref: '',
@@ -228,6 +244,57 @@ export function EstimateProvider({ children }: { children: ReactNode }) {
     reloadRates();
   }, [reloadRates]);
 
+  /**
+   * When a forecast basis is chosen, work out how far the forecast sits from
+   * the current quoted rate and carry that ratio into the costing. Comparing
+   * both at the same reference point is what makes the ratio meaningful.
+   */
+  useEffect(() => {
+    if (forecastMethod === 'latest' || !laneId) {
+      setForecastRatios({});
+      return;
+    }
+    let cancelled = false;
+    const modes: ShipMode[] = ['LCL', 'FCL', 'AIR'];
+    void Promise.all(
+      modes.map(async (mode) => {
+        const params = new URLSearchParams({
+          laneId,
+          mode,
+          referenceCbm: '5',
+        });
+        try {
+          const r = await api.get<{ series: { value: number }[]; forecasts: ForecastResult[] }>(
+            `/rates/history?${params}`,
+          );
+          const latest = r.series[r.series.length - 1]?.value;
+          const f = r.forecasts.find(
+            (x) => x.method === forecastMethod && x.windowMonths === forecastWindowMonths,
+          );
+          if (!latest || !f || latest <= 0) return [mode, undefined] as const;
+          return [mode, f.value / latest] as const;
+        } catch {
+          return [mode, undefined] as const;
+        }
+      }),
+    ).then((pairs) => {
+      if (cancelled) return;
+      const next: Partial<Record<ShipMode, number>> = {};
+      for (const [mode, ratio] of pairs) if (ratio !== undefined) next[mode] = ratio;
+      setForecastRatios(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [forecastMethod, forecastWindowMonths, laneId]);
+
+  const rateBasisLabel =
+    forecastMethod === 'latest'
+      ? 'Quoted'
+      : forecastMethod === 'trailing_average'
+        ? `Forecast — ${forecastWindowMonths}-month trailing average`
+        : `Forecast — linear trend (${forecastWindowMonths}-month window)`;
+
   /* Line editing ---------------------------------------------------- */
 
   const addLine = useCallback(() => setLines((prev) => [...prev, blankLine()]), []);
@@ -283,7 +350,11 @@ export function EstimateProvider({ children }: { children: ReactNode }) {
 
   const comparison = useMemo(() => {
     if (metrics.totalVolumeCbm <= 0 || containerTypes.length === 0) return null;
-    const card = (mode: ShipMode) => activeRates.find((r) => r.mode === mode)?.card ?? undefined;
+    const card = (mode: ShipMode) => {
+      const found = activeRates.find((r) => r.mode === mode)?.card ?? undefined;
+      const ratio = forecastRatios[mode];
+      return found && ratio ? applyForecastRatio(found, ratio) : found;
+    };
     return compareModes({
       metrics,
       packItems,
@@ -294,7 +365,7 @@ export function EstimateProvider({ children }: { children: ReactNode }) {
       stowEfficiency,
       fxOverride: fxOverride ?? undefined,
     });
-  }, [metrics, packItems, containerTypes, activeRates, stowEfficiency, fxOverride]);
+  }, [metrics, packItems, containerTypes, activeRates, stowEfficiency, fxOverride, forecastRatios]);
 
   // Default to the cheapest mode, but never fight a deliberate user choice:
   // the selection is only reset when the lane or mode set changes.
@@ -335,6 +406,12 @@ export function EstimateProvider({ children }: { children: ReactNode }) {
     settings,
     job,
     setJob,
+    forecastMethod,
+    setForecastMethod,
+    forecastWindowMonths,
+    setForecastWindowMonths,
+    rateBasisLabel,
+    forecastRatios,
     activeRates,
     ratesLoading,
     reloadRates,
