@@ -296,3 +296,33 @@ describe('breakeven', () => {
     expect(lclCostAtVolume(above, params)).toBeGreaterThan(fclCostAtVolume(above, params)!.cost);
   });
 });
+
+describe('container fit without rates', () => {
+  it('still works out how the cargo loads when no FCL rate exists', () => {
+    const lines = [line({ id: 'A', qty: 120 })];
+    const c = compareModes({
+      metrics: consignmentMetrics(lines),
+      packItems: cartonPackItems(lines),
+      containerTypes: containers,
+      // No rate cards at all — the estimator has not entered any yet.
+    });
+    expect(c.mixResult).not.toBeNull();
+    expect(c.mixResult!.containers.length).toBeGreaterThan(0);
+    expect(c.mixResult!.unplaced).toHaveLength(0);
+    expect(c.mixResult!.containers[0]!.placements.length).toBeGreaterThan(0);
+    // Nothing is priced, so there is no recommendation to make.
+    expect(c.estimates).toHaveLength(0);
+    expect(c.recommended).toBeNull();
+  });
+
+  it('picks the fewest containers when there is no cost to minimise', () => {
+    const lines = [line({ id: 'A', qty: 700 })]; // 50.4 CBM
+    const c = compareModes({
+      metrics: consignmentMetrics(lines),
+      packItems: cartonPackItems(lines),
+      containerTypes: containers,
+    });
+    const total = c.mixResult!.mix.reduce((s, m) => s + m.count, 0);
+    expect(total).toBe(1); // one 40HC rather than two 20GP
+  });
+});

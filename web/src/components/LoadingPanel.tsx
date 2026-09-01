@@ -182,7 +182,13 @@ export function LoadingPanel({ onImageCaptured }: { onImageCaptured?: (dataUrl: 
         )}
       </Card>
 
-      {mixResult && (
+      {mixResult && mixResult.mix.length === 0 && (
+        <Banner tone="info">
+          Nothing to load yet — enter cartons with dimensions and quantities above.
+        </Banner>
+      )}
+
+      {mixResult && mixResult.mix.length > 0 && (
         <Card
           title="Container fit"
           subtitle={mixResult.mix.map((m) => `${m.count} × ${m.containerTypeName}`).join(' + ')}

@@ -59,20 +59,21 @@ export function compareModes(input: CompareInput): Comparison {
   if (input.lclCard) {
     estimates.push(estimateLcl(input.metrics, input.lclCard, { fxOverride: input.fxOverride }));
   }
-  if (input.fclCard) {
-    mixResult = optimiseContainerMix(
-      input.packItems,
-      input.containerTypes,
-      fclCostOf(input.fclCard),
-      eff,
+  // How the cargo loads is a question about geometry, not price, so the fit is
+  // always worked out. Without FCL rates there is no cost to minimise, so the
+  // mix is chosen to use the fewest containers instead.
+  const costOf = input.fclCard
+    ? fclCostOf(input.fclCard)
+    : (typeId: string) => (input.containerTypes.some((t) => t.id === typeId) ? 1 : null);
+
+  mixResult = optimiseContainerMix(input.packItems, input.containerTypes, costOf, eff);
+
+  if (input.fclCard && mixResult) {
+    estimates.push(
+      estimateFcl(input.metrics, input.fclCard, mixResult, input.containerTypes, {
+        fxOverride: input.fxOverride,
+      }),
     );
-    if (mixResult) {
-      estimates.push(
-        estimateFcl(input.metrics, input.fclCard, mixResult, input.containerTypes, {
-          fxOverride: input.fxOverride,
-        }),
-      );
-    }
   }
   if (input.airCard) {
     estimates.push(estimateAir(input.metrics, input.airCard, { fxOverride: input.fxOverride }));

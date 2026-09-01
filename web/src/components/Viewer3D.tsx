@@ -274,7 +274,7 @@ export function Viewer3D({
   if (!container || !type) {
     return (
       <div className="flex h-72 items-center justify-center rounded border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-500">
-        Nothing to show yet — enter cartons and pick a lane with FCL rates.
+        Nothing to show yet — enter cartons with dimensions and quantities.
       </div>
     );
   }
