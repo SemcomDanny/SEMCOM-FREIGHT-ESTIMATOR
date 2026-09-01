@@ -11,8 +11,12 @@ is a small application and an old office PC handles it comfortably. It needs to
 be on whenever someone wants to use the tool, so a desktop that lives in the
 corner beats someone's laptop.
 
-**Node.js 20 or newer**, from [nodejs.org](https://nodejs.org). Take the LTS
-version and accept the defaults.
+**Node.js 22 or 24**, from [nodejs.org](https://nodejs.org). Take the version
+marked LTS and accept the defaults. Node 20 is too old for the database
+library, and versions newer than 24 may not have a pre-compiled build yet — if
+one doesn't, the install tries to compile it from source and fails asking for
+Visual Studio. The installer checks your version and says so before it gets
+that far.
 
 That is the whole list. There is no database to install — the tool keeps
 everything in a single file.
@@ -154,6 +158,11 @@ pm2 restart semcom-freight     # or stop and re-run `npm start`
 Your database is untouched by an update. Take a backup first anyway.
 
 ## When something goes wrong
+
+**Pages of red `gyp ERR!` text mentioning Visual Studio** — your Node version
+has no pre-compiled database build, so npm tried to compile one. Install Node
+22 or 24 from [nodejs.org](https://nodejs.org), then delete the `node_modules`
+folder and run `npm install` again.
 
 **"Could not read package.json"** — the folder is on the `main` branch, which
 is empty. Run `git checkout claude/freight-estimate-container-tool-ryc7mq` in

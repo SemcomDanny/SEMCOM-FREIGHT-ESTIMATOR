@@ -29,7 +29,7 @@ where node >nul 2>nul
 if errorlevel 1 (
   echo   Node.js is not installed on this computer.
   echo.
-  echo   I will open the download page. Install the version marked "LTS",
+  echo   I will open the download page. Install the version marked "LTS"
   echo   accept all the defaults, then RESTART this computer and
   echo   double-click this file again.
   echo.

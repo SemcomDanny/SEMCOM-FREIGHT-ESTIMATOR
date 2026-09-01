@@ -56,6 +56,10 @@ npm run dev
 The `git checkout` line is only needed until this work reaches `main`. `npm run
 dev` puts the API on :4000 and Vite on :5173.
 
+Needs Node 22 or 24 — the database library only ships pre-compiled builds for
+those, and `npm install` refuses to start on anything older rather than
+producing a wall of compiler errors.
+
 Sign in with the seeded admin (`SEED_ADMIN_EMAIL`, default
 `admin@sem.com.au`). **Change that password before anyone else uses the tool.**
 

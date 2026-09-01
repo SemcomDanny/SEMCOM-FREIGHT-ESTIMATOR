@@ -2,7 +2,8 @@
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
 
-# Native build tools for better-sqlite3 when no prebuilt binary matches.
+# Fallback toolchain: better-sqlite3 ships a prebuilt binary for node 22, so
+# this is only used if that download is unavailable.
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
     && rm -rf /var/lib/apt/lists/*
 
