@@ -42,7 +42,9 @@ export function seedIfEmpty(): void {
     createUser(email, 'Administrator', 'admin', password);
     // eslint-disable-next-line no-console
     console.log(
-      `Seeded first admin ${email}. Sign in and change this password before anyone else uses the tool.`,
+      process.env.SEED_ADMIN_PASSWORD
+        ? `Seeded first admin ${email} with the password from SEED_ADMIN_PASSWORD.`
+        : `Seeded first admin ${email} with the default password. Change it before anyone else uses the tool.`,
     );
   }
 

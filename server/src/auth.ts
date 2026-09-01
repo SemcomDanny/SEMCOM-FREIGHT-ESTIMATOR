@@ -15,11 +15,6 @@ export interface AuthUser {
 const SECRET = process.env.JWT_SECRET ?? 'semcom-dev-secret-change-me';
 const TOKEN_TTL = '12h';
 
-if (!process.env.JWT_SECRET && process.env.NODE_ENV === 'production') {
-  // eslint-disable-next-line no-console
-  console.warn('JWT_SECRET is not set — set it before deploying beyond a local trial.');
-}
-
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {

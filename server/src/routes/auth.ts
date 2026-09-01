@@ -1,10 +1,13 @@
 import { Router } from 'express';
 import { requireAdmin, requireAuth, createUser, signToken, verifyLogin } from '../auth.js';
 import { audit, db } from '../db.js';
+import { loginThrottle } from '../security.js';
 
 export const authRouter = Router();
 
-authRouter.post('/login', (req, res) => {
+const throttle = loginThrottle();
+
+authRouter.post('/login', throttle.middleware, (req, res) => {
   const { email, password } = req.body ?? {};
   if (typeof email !== 'string' || typeof password !== 'string') {
     res.status(400).json({ error: 'Email and password are required' });
@@ -12,9 +15,11 @@ authRouter.post('/login', (req, res) => {
   }
   const user = verifyLogin(email, password);
   if (!user) {
+    throttle.recordFailure(req);
     res.status(401).json({ error: 'Email or password is incorrect' });
     return;
   }
+  throttle.recordSuccess(req);
   const token = signToken(user);
   res.cookie('token', token, {
     httpOnly: true,
