@@ -12,7 +12,9 @@ export interface AuthUser {
   role: Role;
 }
 
-const SECRET = process.env.JWT_SECRET ?? 'semcom-dev-secret-change-me';
+// `??` would accept an empty string as the key, which throws deep inside the
+// JWT library at sign-in time with a message that says nothing about .env.
+const SECRET = process.env.JWT_SECRET || 'semcom-dev-secret-change-me';
 const TOKEN_TTL = '12h';
 
 declare global {

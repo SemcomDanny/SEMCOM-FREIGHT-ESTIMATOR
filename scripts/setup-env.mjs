@@ -6,19 +6,33 @@
  * get wrong by hand, so they are generated rather than invented.
  */
 import { randomBytes } from 'node:crypto';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const envPath = resolve(process.cwd(), '.env');
 
-if (existsSync(envPath) && !process.argv.includes('--force')) {
+/**
+ * A .env copied straight from .env.example has the keys but no values, and is
+ * unusable. Refusing to touch it leaves the user stuck, so only a .env that
+ * actually carries a signing key is treated as one worth protecting.
+ */
+function isConfigured(path) {
+  const match = readFileSync(path, 'utf8').match(/^JWT_SECRET=(.*)$/m);
+  return Boolean(match && match[1].trim());
+}
+
+if (existsSync(envPath) && isConfigured(envPath) && !process.argv.includes('--force')) {
   console.error(
-    `\n.env already exists at ${envPath}.\n` +
+    `\n.env already exists at ${envPath} and is configured.\n` +
       `Nothing changed — delete it, or re-run with --force, if you really want a new one.\n` +
       `Regenerating JWT_SECRET signs everyone out; regenerating the admin password does\n` +
       `nothing to the account that already exists in the database.\n`,
   );
   process.exit(1);
+}
+
+if (existsSync(envPath)) {
+  console.log('\nFound a .env with no signing key set — replacing it with a working one.');
 }
 
 /** Readable but strong: 4 words' worth of entropy without ambiguous characters. */

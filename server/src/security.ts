@@ -12,13 +12,13 @@ export function assertProductionConfig(): void {
   if (process.env.NODE_ENV !== 'production') return;
 
   const problems: string[] = [];
-  const secret = process.env.JWT_SECRET ?? '';
+  const secret = (process.env.JWT_SECRET ?? '').trim();
   if (secret.length < 32) {
     problems.push(
       'JWT_SECRET must be set to at least 32 characters. Generate one with: openssl rand -hex 32',
     );
   }
-  if (!process.env.SEED_ADMIN_PASSWORD && !process.env.ALLOW_DEFAULT_ADMIN_PASSWORD) {
+  if (!process.env.SEED_ADMIN_PASSWORD?.trim() && !process.env.ALLOW_DEFAULT_ADMIN_PASSWORD) {
     problems.push(
       'SEED_ADMIN_PASSWORD must be set so the first admin does not get a published default password.',
     );
