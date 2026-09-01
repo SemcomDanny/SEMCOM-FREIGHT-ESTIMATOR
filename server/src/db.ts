@@ -132,6 +132,9 @@ export function migrate(): void {
       stow_efficiency REAL NOT NULL DEFAULT 0.85,
       fx_override REAL,
       notes TEXT,
+      /* Quantity break scenarios, as a JSON array. The carton rows hold the
+         base quantities; each break scales them. */
+      breaks_json TEXT,
       created_by TEXT REFERENCES users(id),
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -287,6 +290,12 @@ export function migrate(): void {
  * admin who deliberately puts something back.
  */
 export function runDataMigrations(): void {
+  // Older databases predate quantity breaks.
+  const jobColumns = db.prepare('PRAGMA table_info(jobs)').all() as { name: string }[];
+  if (!jobColumns.some((c) => c.name === 'breaks_json')) {
+    db.exec('ALTER TABLE jobs ADD COLUMN breaks_json TEXT');
+  }
+
   if (getSetting('retired_45hc', '') !== 'done') {
     // 45' HC was seeded originally and is no longer wanted. Rate history must
     // stay intact, so it is only deleted when nothing references it; otherwise

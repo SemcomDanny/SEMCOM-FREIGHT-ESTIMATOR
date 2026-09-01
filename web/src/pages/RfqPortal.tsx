@@ -11,6 +11,8 @@ import { NumInput } from '../components/NumInput';
 
 interface RfqView {
   lane: string;
+  destinationPort: string;
+  deliveryRequirement: string;
   currency: string;
   incoterm: string | null;
   commodity: string | null;
@@ -53,8 +55,7 @@ export function RfqPortal() {
 
   const [submitterName, setSubmitterName] = useState('');
   const [submitterEmail, setSubmitterEmail] = useState('');
-  const [currency, setCurrency] = useState('AUD');
-  const [fxToAud, setFxToAud] = useState(1);
+  const currency = 'AUD';
   const [validFrom, setValidFrom] = useState('');
   const [validUntil, setValidUntil] = useState('');
   const [transitDays, setTransitDays] = useState(0);
@@ -80,7 +81,6 @@ export function RfqPortal() {
       })
       .then((v) => {
         setView(v);
-        setCurrency(v.currency);
         setSubmitterEmail(v.forwarderEmail);
       })
       .catch((e: Error) => setLoadError(e.message));
@@ -105,8 +105,6 @@ export function RfqPortal() {
     const form = new FormData();
     form.set('submitterName', submitterName);
     form.set('submitterEmail', submitterEmail);
-    form.set('currency', currency);
-    form.set('fxToAud', String(fxToAud));
     form.set('validFrom', validFrom);
     form.set('validUntil', validUntil);
     form.set('transitDays', String(transitDays || ''));
@@ -192,6 +190,15 @@ export function RfqPortal() {
               <Detail label="Gross weight" value={`${fmt.kg(view.metrics.totalWeightKg, 0)} kg`} />
             </div>
           )}
+          <div className="border-t border-slate-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <div className="label mb-1 text-amber-800">Terms — please quote on this basis</div>
+            <ul className="list-disc space-y-0.5 pl-5">
+              <li>
+                <strong>Incoterm FOB</strong>, quoted in <strong>AUD</strong>.
+              </li>
+              <li>{view.deliveryRequirement}</li>
+            </ul>
+          </div>
           {view.notes && <p className="border-t border-slate-200 px-4 py-3 text-sm">{view.notes}</p>}
           {view.alreadySubmitted > 0 && (
             <div className="px-4 pb-3">
@@ -214,16 +221,6 @@ export function RfqPortal() {
                 value={submitterEmail}
                 onChange={(e) => setSubmitterEmail(e.target.value)}
               />
-            </Field>
-            <Field label="Currency">
-              <input
-                className="field"
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value.toUpperCase().slice(0, 3))}
-              />
-            </Field>
-            <Field label="FX to AUD" hint="Leave at 1 if quoting in AUD">
-              <NumInput value={fxToAud} dp={4} onChange={setFxToAud} />
             </Field>
             <Field label="Valid from">
               <input type="date" className="field" value={validFrom} onChange={(e) => setValidFrom(e.target.value)} />
@@ -301,7 +298,10 @@ export function RfqPortal() {
           </div>
         </Card>
 
-        <Card title="FCL rates" subtitle="Leave a row blank if you are not quoting that container">
+        <Card
+          title="FCL rates"
+          subtitle={`Destination charges must include delivery to one metro address in ${view.destinationPort}`}
+        >
           <div className="overflow-x-auto">
             <table className="w-full min-w-[620px]">
               <thead className="bg-slate-50">
@@ -309,7 +309,7 @@ export function RfqPortal() {
                   <th className="th">Container</th>
                   <th className="th text-right">Ocean freight</th>
                   <th className="th text-right">Origin charges</th>
-                  <th className="th text-right">Destination charges</th>
+                  <th className="th text-right">Destination charges (incl. delivery)</th>
                   <th className="th text-right">All-in</th>
                 </tr>
               </thead>

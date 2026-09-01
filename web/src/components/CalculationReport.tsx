@@ -25,10 +25,13 @@ function download(blob: Blob, filename: string): void {
 }
 
 /**
- * Export the estimate with the team's own column headings and order, so it
- * pastes straight into the existing quote spreadsheet with no rework.
+ * Internal calculation report.
+ *
+ * Two jobs: a readable record of how a number was arrived at, for the file or
+ * for anyone who queries it later, and the same figures as columns you can
+ * paste into whatever spreadsheet the quote lives in.
  */
-export function ExportPanel({ estimate }: { estimate: CostEstimate | null }) {
+export function CalculationReport({ estimate }: { estimate: CostEstimate | null }) {
   const est = useEstimate();
   const [columns, setColumns] = useState<Column[]>(defaultColumns());
   const [profiles, setProfiles] = useState<ProfilesResponse['profiles']>([]);
@@ -120,15 +123,20 @@ export function ExportPanel({ estimate }: { estimate: CostEstimate | null }) {
 
   if (!estimate) {
     return (
-      <Card title="Quote export">
-        <p className="p-4 text-sm text-slate-600">Price the consignment first, then export it here.</p>
+      <Card title="Calculation report">
+        <p className="p-4 text-sm text-slate-600">
+          Price the consignment first — this then records how the figure was arrived at.
+        </p>
       </Card>
     );
   }
 
   return (
+    <div className="space-y-3">
+      <Workings estimate={estimate} />
+
     <Card
-      title="Quote export"
+      title="Figures for the quote sheet"
       subtitle="Rename and reorder the columns to match your existing sheet — the layout is remembered"
       actions={
         <>
@@ -230,6 +238,111 @@ export function ExportPanel({ estimate }: { estimate: CostEstimate | null }) {
           Download XLSX
         </button>
       </div>
+    </Card>
+    </div>
+  );
+}
+
+/**
+ * The workings behind the number, in the order they were applied. This is the
+ * bit worth keeping on file — six months later nobody remembers which rate
+ * version a quote was priced on or what stow factor was assumed.
+ */
+function Workings({ estimate }: { estimate: CostEstimate }) {
+  const est = useEstimate();
+  const lane = est.lanes.find((l) => l.id === est.laneId);
+  const m = est.metrics;
+  const mix = est.comparison?.mixResult;
+  const [copied, setCopied] = useState(false);
+
+  const asText = () => {
+    const out: string[] = [];
+    out.push(`CALCULATION REPORT — ${est.job.ref || 'unsaved job'}`);
+    if (est.job.client) out.push(`Client: ${est.job.client}`);
+    out.push(`Lane: ${lane ? `${lane.origin_port} → ${lane.destination_port}` : '—'}`);
+    out.push(`Order quantity: ${est.activeBreak?.label ?? 'as entered'}`);
+    out.push(`Prepared: ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`);
+    out.push(`Rate basis: ${est.rateBasisLabel}`);
+    out.push('');
+    out.push('CONSIGNMENT');
+    for (const l of m.lines) {
+      out.push(
+        `  ${l.description}: ${l.qty} ctn @ ${l.volumeCbmEach.toFixed(4)} CBM = ` +
+          `${l.volumeCbmTotal.toFixed(3)} CBM, ${l.weightKgTotal.toFixed(1)} kg`,
+      );
+    }
+    out.push(`  Total: ${m.totalCartons} cartons, ${m.totalVolumeCbm.toFixed(3)} CBM, ${m.totalWeightKg.toFixed(1)} kg`);
+    out.push(`  Density: ${m.densityKgPerCbm.toFixed(0)} kg/CBM`);
+    out.push(
+      `  Chargeable (W/M): ${m.chargeableCbm.toFixed(3)} CBM — max(volume, weight/1000), ${m.chargeableBasis}-based`,
+    );
+    out.push('');
+    out.push('LOADING');
+    out.push(`  Mode: ${est.loadingMode === 'palletised' ? 'palletised' : 'floor-loaded'}`);
+    out.push(`  Stow efficiency assumed: ${(est.stowEfficiency * 100).toFixed(0)}%`);
+    if (mix) {
+      out.push(`  Container fit: ${mix.mix.map((x) => `${x.count} x ${x.containerTypeName}`).join(' + ')}`);
+      out.push(
+        `  Utilisation: ${(mix.meanVolumeUtilisation * 100).toFixed(1)}% by volume, ` +
+          `${(mix.meanPayloadUtilisation * 100).toFixed(1)}% by payload`,
+      );
+    }
+    out.push('');
+    out.push(`COSTING — ${estimate.mode}, ${estimate.basis}`);
+    for (const c of estimate.components) {
+      out.push(`  ${c.label}: ${c.amount.toFixed(2)} ${estimate.currency}`);
+      out.push(`      ${c.formula}`);
+      if (c.sourceRateCardId) out.push(`      rate version ${c.sourceRateCardId}`);
+    }
+    out.push(`  TOTAL: ${estimate.total.toFixed(2)} ${estimate.currency} (${estimate.totalAud.toFixed(2)} AUD @ ${estimate.fxToAud})`);
+    out.push(`  Per CBM: ${estimate.costPerCbm.toFixed(2)} · per carton: ${estimate.costPerCarton.toFixed(2)}`);
+    if (estimate.costPerUnit != null) out.push(`  Per unit: ${estimate.costPerUnit.toFixed(4)}`);
+    if (estimate.warnings.length > 0) {
+      out.push('');
+      out.push('NOTES');
+      for (const w of estimate.warnings) out.push(`  - ${w}`);
+    }
+    out.push('');
+    out.push('Container fit is a deterministic estimate, not a stow plan. Actual stow is the packer\'s.');
+    return out.join('\n');
+  };
+
+  return (
+    <Card
+      title="How this figure was worked out"
+      subtitle="Keep this with the quote — it records the rate version, the assumptions and the arithmetic"
+      actions={
+        <>
+          <button
+            className="btn-ghost"
+            onClick={() => {
+              void navigator.clipboard.writeText(asText());
+              setCopied(true);
+              setTimeout(() => setCopied(false), 3000);
+            }}
+          >
+            {copied ? 'Copied' : 'Copy report'}
+          </button>
+          <button
+            className="btn-ghost"
+            onClick={() => {
+              const blob = new Blob([asText()], { type: 'text/plain' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `${est.job.ref || 'calculation'}-report.txt`;
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
+            Download
+          </button>
+        </>
+      }
+    >
+      <pre className="max-h-96 overflow-auto whitespace-pre-wrap px-4 py-3 font-mono text-[11px] leading-relaxed text-slate-800">
+        {asText()}
+      </pre>
     </Card>
   );
 }

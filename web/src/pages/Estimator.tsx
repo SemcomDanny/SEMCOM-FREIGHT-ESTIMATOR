@@ -1,28 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useEstimate } from '../state/EstimateContext';
+import { BreakComparison } from '../components/BreakComparison';
+import { BreakTabs } from '../components/BreakTabs';
+import { CalculationReport } from '../components/CalculationReport';
 import { CartonTable } from '../components/CartonTable';
 import { CostPanel } from '../components/CostPanel';
-import { ExportPanel } from '../components/ExportPanel';
+import { JobBar } from '../components/JobBar';
 import { JobPanel } from '../components/JobPanel';
 import { LoadingPanel } from '../components/LoadingPanel';
-import { RfqPanel } from '../components/RfqPanel';
+import { SaveBar } from '../components/SaveBar';
 import { Totals } from '../components/Totals';
-import { Banner, Spinner } from '../components/ui';
+import { Banner } from '../components/ui';
 
-type Tab = 'loading' | 'cost' | 'rfq' | 'export' | 'job';
+type Tab = 'loading' | 'cost' | 'breaks' | 'report' | 'job';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'cost', label: 'Cost estimate' },
+  { key: 'breaks', label: 'Quantity breaks' },
   { key: 'loading', label: 'Loading & 3D view' },
-  { key: 'rfq', label: 'Forwarder RFQ' },
-  { key: 'export', label: 'Quote export' },
+  { key: 'report', label: 'Calculation report' },
   { key: 'job', label: 'Job & actuals' },
 ];
 
 export function Estimator() {
   const est = useEstimate();
   const [tab, setTab] = useState<Tab>('cost');
-  const [loadingImage, setLoadingImage] = useState<string | null>(null);
   const { refreshRateData } = est;
 
   // Pick up any lane or rate version added since this session started.
@@ -38,81 +40,10 @@ export function Estimator() {
   }, [est.comparison, est.selectedMode]);
 
   return (
-    <div className="space-y-3">
-      <div className="card flex flex-wrap items-end gap-3 px-4 py-3">
-        <label className="block">
-          <span className="label">Lane</span>
-          <select
-            className="field mt-1 w-64"
-            value={est.laneId}
-            onChange={(e) => est.setLaneId(e.target.value)}
-          >
-            {est.lanes.length === 0 && <option value="">No lanes configured</option>}
-            {est.lanes.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.origin_port} → {l.destination_port}
-                {l.rate_versions === 0 ? ' (no rates)' : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block">
-          <span className="label">Job / quote ref</span>
-          <input
-            className="field mt-1 w-40"
-            placeholder="Q-2026-118"
-            value={est.job.ref}
-            onChange={(e) => est.setJob({ ref: e.target.value })}
-          />
-        </label>
-        <label className="block">
-          <span className="label">Client</span>
-          <input
-            className="field mt-1 w-48"
-            value={est.job.client}
-            onChange={(e) => est.setJob({ client: e.target.value })}
-          />
-        </label>
-        <label className="block">
-          <span className="label">Estimating basis</span>
-          <select
-            className="field mt-1 w-56"
-            value={`${est.forecastMethod}:${est.forecastWindowMonths}`}
-            onChange={(e) => {
-              const [method, months] = e.target.value.split(':');
-              est.setForecastMethod(method as typeof est.forecastMethod);
-              est.setForecastWindowMonths(Number(months));
-            }}
-          >
-            <option value="latest:6">Latest quoted rate</option>
-            <option value="trailing_average:3">Forecast — 3-month trailing avg</option>
-            <option value="trailing_average:6">Forecast — 6-month trailing avg</option>
-            <option value="trailing_average:12">Forecast — 12-month trailing avg</option>
-            <option value="linear_trend:6">Forecast — linear trend (6 mo)</option>
-            <option value="linear_trend:12">Forecast — linear trend (12 mo)</option>
-          </select>
-        </label>
-
-        <div className="ml-auto text-xs text-slate-500">
-          {est.ratesLoading ? (
-            <Spinner label="Loading rates" />
-          ) : (
-            <>
-              Rates in force:{' '}
-              {est.activeRates.filter((r) => r.card).length === 0
-                ? est.activeRates.some((r) => r.nextEffectiveFrom)
-                  ? `none yet — starts ${est.activeRates.find((r) => r.nextEffectiveFrom)!.nextEffectiveFrom}`
-                  : 'none for this lane'
-                : est.activeRates
-                    .filter((r) => r.card)
-                    .map((r) => `${r.mode} from ${r.card!.effectiveFrom}${r.stale ? ' (stale)' : ''}`)
-                    .join(' · ')}
-            </>
-          )}
-        </div>
-      </div>
-
+    <div className="space-y-3 pb-20">
+      <JobBar />
       <CartonTable />
+      <BreakTabs />
       <Totals />
 
       <div className="flex flex-wrap gap-1 border-b border-slate-300">
@@ -138,10 +69,12 @@ export function Estimator() {
       )}
 
       {tab === 'cost' && <CostPanel />}
-      {tab === 'loading' && <LoadingPanel onImageCaptured={setLoadingImage} />}
-      {tab === 'rfq' && <RfqPanel loadingImage={loadingImage} />}
-      {tab === 'export' && <ExportPanel estimate={selectedEstimate} />}
+      {tab === 'breaks' && <BreakComparison />}
+      {tab === 'loading' && <LoadingPanel />}
+      {tab === 'report' && <CalculationReport estimate={selectedEstimate} />}
       {tab === 'job' && <JobPanel estimate={selectedEstimate} />}
+
+      <SaveBar estimate={selectedEstimate} />
     </div>
   );
 }

@@ -67,11 +67,30 @@ interface RfqRow {
   responded_at: string | null;
 }
 
-function laneLabel(laneId: string): string {
-  const lane = db.prepare('SELECT origin_port, destination_port FROM lanes WHERE id = ?').get(laneId) as
+function laneOf(laneId: string): { origin_port: string; destination_port: string } | undefined {
+  return db.prepare('SELECT origin_port, destination_port FROM lanes WHERE id = ?').get(laneId) as
     | { origin_port: string; destination_port: string }
     | undefined;
+}
+
+function laneLabel(laneId: string): string {
+  const lane = laneOf(laneId);
   return lane ? `${lane.origin_port} → ${lane.destination_port}` : laneId;
+}
+
+/**
+ * What "destination charges" has to include, spelled out.
+ *
+ * Forwarders quote destination charges to the wharf by default, and a quote
+ * that stops there is not comparable with one that includes the run to the
+ * warehouse. Saying it explicitly on both the request and the form is what
+ * makes the numbers line up.
+ */
+export function deliveryRequirement(destinationPort: string): string {
+  return (
+    `Destination charges must include delivery of the container to one metro address in ` +
+    `${destinationPort}. Please quote door-delivered, not wharf.`
+  );
 }
 
 function isExpired(row: { expires_at: string; status: string }): boolean {
@@ -123,7 +142,13 @@ rfqRouter.get('/forwarders', (_req, res) => {
 function buildEmail(
   laneName: string,
   url: string,
-  opts: { currency: string; expiresAt: string; notes?: string | null; metrics?: ConsignmentMetrics | null; senderName: string },
+  opts: {
+    destinationPort: string;
+    expiresAt: string;
+    notes?: string | null;
+    metrics?: ConsignmentMetrics | null;
+    senderName: string;
+  },
 ): { subject: string; text: string } {
   const lines: string[] = [];
   lines.push('Hi,');
@@ -137,6 +162,11 @@ function buildEmail(
   lines.push('The form takes LCL rates at three volumes, FCL rates per container,');
   lines.push('and your ancillary charges. You can attach your official PDF quote as well.');
   lines.push('');
+  lines.push('TERMS');
+  lines.push('  Incoterm:  FOB');
+  lines.push('  Currency:  AUD');
+  lines.push(`  Delivery:  ${deliveryRequirement(opts.destinationPort)}`);
+  lines.push('');
   if (opts.metrics) {
     lines.push('For reference, a typical consignment on this lane:');
     lines.push(`  Cartons:          ${opts.metrics.totalCartons}`);
@@ -145,7 +175,7 @@ function buildEmail(
     lines.push(`  Gross weight:     ${opts.metrics.totalWeightKg.toFixed(0)} kg`);
     lines.push('');
   }
-  lines.push(`Please quote in ${opts.currency}. The link works until ${opts.expiresAt.slice(0, 10)}.`);
+  lines.push(`The link works until ${opts.expiresAt.slice(0, 10)}.`);
   if (opts.notes) {
     lines.push('');
     lines.push(opts.notes);
@@ -201,8 +231,8 @@ rfqRouter.post('/', requireAdmin, async (req, res) => {
     b.laneId,
     forwarder.id,
     b.jobId ?? null,
-    b.currency ?? 'AUD',
-    b.incoterm ?? null,
+    'AUD',
+    'FOB',
     b.commodity ?? null,
     b.cargoReadyDate ?? null,
     b.notes ?? null,
@@ -214,8 +244,9 @@ rfqRouter.post('/', requireAdmin, async (req, res) => {
   );
 
   const url = `${publicBaseUrl(req)}/rfq/${token}`;
+  const lane2 = laneOf(b.laneId);
   const message = buildEmail(laneLabel(b.laneId), url, {
-    currency: b.currency ?? 'AUD',
+    destinationPort: lane2?.destination_port ?? 'the destination',
     expiresAt,
     notes: b.notes,
     metrics: b.metrics ?? null,
@@ -431,10 +462,13 @@ publicRfqRouter.get('/:token', (req, res) => {
     db.prepare('SELECT COUNT(*) AS n FROM rfq_responses WHERE rfq_id = ?').get(row.id) as { n: number }
   ).n;
 
+  const lane = laneOf(row.lane_id);
   res.json({
     lane: laneLabel(row.lane_id),
-    currency: row.currency,
-    incoterm: row.incoterm,
+    destinationPort: lane?.destination_port ?? '',
+    deliveryRequirement: deliveryRequirement(lane?.destination_port ?? 'the destination city'),
+    currency: 'AUD',
+    incoterm: 'FOB',
     commodity: row.commodity,
     cargoReadyDate: row.cargo_ready_date,
     notes: row.notes,
@@ -529,8 +563,8 @@ publicRfqRouter.post('/:token', (req, res) => {
       new Date().toISOString(),
       text(b.submitterName),
       text(b.submitterEmail),
-      text(b.currency) ?? row.currency,
-      Number(b.fxToAud) || 1,
+      'AUD',
+      1,
       text(b.validFrom),
       text(b.validUntil),
       Number(b.transitDays) || null,

@@ -1,8 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   applyForecastRatio,
   cartonPackItems,
+  defaultBreaks,
+  scaleLines,
   compareModes,
   consignmentMetrics,
   palletPackItems,
@@ -14,6 +16,7 @@ import {
 import type {
   CartonLine,
   Comparison,
+  QtyBreak,
   ForecastMethod,
   ForecastResult,
   ConsignmentMetrics,
@@ -29,6 +32,7 @@ import type {
 } from '@semcom/engine';
 import { api } from '../api';
 import type { AppSettings, ContainerTypeRow, Lane, PalletTypeRow } from '../api';
+import type { CostEstimate } from '@semcom/engine';
 
 export type LoadingMode = 'floor' | 'palletised';
 
@@ -55,8 +59,17 @@ export interface ActiveRate {
 }
 
 interface EstimateState {
+  /** Base quantities as entered. Quantity breaks scale these. */
   lines: CartonLine[];
   setLines: (next: CartonLine[] | ((prev: CartonLine[]) => CartonLine[])) => void;
+  /** `lines` scaled by the selected quantity break — what everything is costed on. */
+  activeLines: CartonLine[];
+
+  breaks: QtyBreak[];
+  setBreaks: (next: QtyBreak[] | ((prev: QtyBreak[]) => QtyBreak[])) => void;
+  activeBreakId: string;
+  setActiveBreakId: (id: string) => void;
+  activeBreak: QtyBreak | null;
   addLine: () => void;
   updateLine: (id: string, patch: Partial<CartonLine>) => void;
   removeLine: (id: string) => void;
@@ -100,6 +113,15 @@ interface EstimateState {
   rateBasisLabel: string;
   /** Per-mode multiplier applied to freight when a forecast basis is chosen. */
   forecastRatios: Partial<Record<ShipMode, number>>;
+
+  /* Saving. */
+  dirty: boolean;
+  saving: boolean;
+  saveError: string | null;
+  lastSavedAt: string | null;
+  saveJob: (estimate: CostEstimate | null) => Promise<void>;
+  loadJob: (jobId: string) => Promise<void>;
+  resetJob: () => void;
 
   activeRates: ActiveRate[];
   ratesLoading: boolean;
@@ -162,6 +184,8 @@ function toPalletType(r: PalletTypeRow): PalletType {
 
 export function EstimateProvider({ children }: { children: ReactNode }) {
   const [lines, setLines] = useState<CartonLine[]>([blankLine()]);
+  const [breaks, setBreaks] = useState<QtyBreak[]>(defaultBreaks());
+  const [activeBreakId, setActiveBreakId] = useState('b1');
   const [lengthUnit, setLengthUnit] = useState<LengthUnit>('mm');
   const [weightUnit, setWeightUnit] = useState<WeightUnit>('kg');
   const [laneId, setLaneId] = useState('');
@@ -178,6 +202,10 @@ export function EstimateProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [stowEfficiency, setStowEfficiency] = useState(0.85);
   const [fxOverride, setFxOverride] = useState<number | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [activeRates, setActiveRates] = useState<ActiveRate[]>([]);
   const [ratesLoading, setRatesLoading] = useState(false);
   const [selectedMode, setSelectedMode] = useState<ShipMode | null>(null);
@@ -199,6 +227,8 @@ export function EstimateProvider({ children }: { children: ReactNode }) {
 
   const setJob = useCallback((patch: Partial<JobMeta>) => {
     setJobState((prev) => ({ ...prev, ...patch }));
+    // `id` alone changes when a save completes, which is not an edit.
+    if (Object.keys(patch).some((k) => k !== 'id')) setDirty(true);
   }, []);
 
   useEffect(() => {
@@ -299,12 +329,17 @@ export function EstimateProvider({ children }: { children: ReactNode }) {
 
   /* Line editing ---------------------------------------------------- */
 
-  const addLine = useCallback(() => setLines((prev) => [...prev, blankLine()]), []);
+  const addLine = useCallback(() => {
+    setLines((prev) => [...prev, blankLine()]);
+    setDirty(true);
+  }, []);
   const updateLine = useCallback((id: string, patch: Partial<CartonLine>) => {
     setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+    setDirty(true);
   }, []);
   const removeLine = useCallback((id: string) => {
     setLines((prev) => (prev.length > 1 ? prev.filter((l) => l.id !== id) : [blankLine()]));
+    setDirty(true);
   }, []);
   const duplicateLine = useCallback((id: string) => {
     setLines((prev) => {
@@ -313,12 +348,176 @@ export function EstimateProvider({ children }: { children: ReactNode }) {
       const copy = { ...prev[i]!, id: blankLine().id };
       return [...prev.slice(0, i + 1), copy, ...prev.slice(i + 1)];
     });
+    setDirty(true);
   }, []);
-  const clearLines = useCallback(() => setLines([blankLine()]), []);
+  const clearLines = useCallback(() => {
+    setLines([blankLine()]);
+    setDirty(true);
+  }, []);
+
+  /* Saving and loading ---------------------------------------------- */
+
+  /**
+   * Save reads through refs rather than closing over state.
+   *
+   * The save handler is handed to a button that lives for the life of the
+   * screen; capturing state in its closure would save whatever the values were
+   * when it was created, which is a silent and very confusing data-loss bug.
+   */
+  const jobRef = useRef(job);
+  const laneRef = useRef(laneId);
+  const modeRef = useRef(loadingMode);
+  const palletRef = useRef(palletTypeId);
+  const stowRef = useRef(stowEfficiency);
+  const fxRef = useRef(fxOverride);
+  const linesRef = useRef(lines);
+  const breaksRef = useRef(breaks);
+  const metricsRef = useRef<ConsignmentMetrics | null>(null);
+  const activeBreakRef = useRef<QtyBreak | null>(null);
+  jobRef.current = job;
+  laneRef.current = laneId;
+  modeRef.current = loadingMode;
+  palletRef.current = palletTypeId;
+  stowRef.current = stowEfficiency;
+  fxRef.current = fxOverride;
+  linesRef.current = lines;
+  breaksRef.current = breaks;
+
+
+  const resetJob = useCallback(() => {
+    setLines([blankLine()]);
+    setBreaks(defaultBreaks());
+    setActiveBreakId('b1');
+    setLoadingMode('floor');
+    setFxOverride(null);
+    setJobState({
+      id: null,
+      ref: '',
+      client: '',
+      status: 'Draft',
+      incoterm: 'FOB',
+      commodity: '',
+      hsCode: '',
+      cargoReadyDate: '',
+      dangerousGoods: false,
+      notes: '',
+    });
+    setDirty(false);
+    setSaveError(null);
+    setLastSavedAt(null);
+  }, []);
+
+  const saveJob = useCallback(
+    async (estimate: CostEstimate | null) => {
+      setSaving(true);
+      setSaveError(null);
+      try {
+        const payload = {
+          ref: jobRef.current.ref,
+          client: jobRef.current.client,
+          laneId: laneRef.current,
+          status: jobRef.current.status,
+          incoterm: jobRef.current.incoterm,
+          commodity: jobRef.current.commodity,
+          hsCode: jobRef.current.hsCode,
+          cargoReadyDate: jobRef.current.cargoReadyDate || null,
+          dangerousGoods: jobRef.current.dangerousGoods,
+          loadingMode: modeRef.current,
+          palletTypeId: modeRef.current === 'palletised' ? palletRef.current : null,
+          stowEfficiency: stowRef.current,
+          fxOverride: fxRef.current,
+          notes: jobRef.current.notes,
+          // Base quantities are saved; breaks are scenarios layered on top.
+          lines: linesRef.current.filter((l) => l.qty > 0 && l.lengthMm > 0),
+          breaks: breaksRef.current,
+        };
+        const saved = jobRef.current.id
+          ? await api.put<{ job: { id: string } }>(`/jobs/${jobRef.current.id}`, payload)
+          : await api.post<{ job: { id: string } }>('/jobs', payload);
+
+        const jobId = saved.job.id;
+        setJobState((prev) => ({ ...prev, id: jobId }));
+
+        if (estimate) {
+          await api.post(`/jobs/${jobId}/results`, {
+            modeSelected: estimate.mode,
+            rateCardId: estimate.components[0]?.sourceRateCardId ?? null,
+            totalCost: estimate.totalAud,
+            breakdown: {
+              basis: estimate.basis,
+              currency: estimate.currency,
+              fxToAud: estimate.fxToAud,
+              components: estimate.components,
+              metrics: metricsRef.current,
+              containerMix: estimate.containerMix,
+              stowEfficiency: stowRef.current,
+              quantityBreak: activeBreakRef.current?.label ?? null,
+            },
+          });
+        }
+        setDirty(false);
+        setLastSavedAt(new Date().toISOString());
+      } catch (err) {
+        setSaveError((err as Error).message);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [],
+  );
+
+  const loadJob = useCallback(async (jobId: string) => {
+    const detail = await api.get<{ job: Record<string, unknown>; lines: CartonLine[] }>(`/jobs/${jobId}`);
+    const j = detail.job as Record<string, string | number | null>;
+    setLines(detail.lines.length > 0 ? detail.lines : [blankLine()]);
+    let loadedBreaks = defaultBreaks();
+    if (typeof j.breaks_json === 'string' && j.breaks_json) {
+      try {
+        const parsed = JSON.parse(j.breaks_json) as QtyBreak[];
+        if (Array.isArray(parsed) && parsed.length > 0) loadedBreaks = parsed;
+      } catch {
+        /* keep the defaults */
+      }
+    }
+    setBreaks(loadedBreaks);
+    setActiveBreakId(loadedBreaks[0]!.id);
+    setLaneId(String(j.lane_id ?? ''));
+    setLoadingMode((j.loading_mode as LoadingMode) ?? 'floor');
+    if (j.pallet_type_id) setPalletTypeId(String(j.pallet_type_id));
+    if (typeof j.stow_efficiency === 'number') setStowEfficiency(j.stow_efficiency);
+    setFxOverride(typeof j.fx_override === 'number' ? j.fx_override : null);
+    setJobState({
+      id: String(j.id),
+      ref: String(j.ref ?? ''),
+      client: String(j.client ?? ''),
+      status: (j.status as JobMeta['status']) ?? 'Draft',
+      incoterm: (j.incoterm as JobMeta['incoterm']) ?? 'FOB',
+      commodity: String(j.commodity ?? ''),
+      hsCode: String(j.hs_code ?? ''),
+      cargoReadyDate: String(j.cargo_ready_date ?? ''),
+      dangerousGoods: Number(j.dangerous_goods) === 1,
+      notes: String(j.notes ?? ''),
+    });
+    setDirty(false);
+    setSaveError(null);
+    setLastSavedAt(null);
+  }, []);
 
   /* Derived --------------------------------------------------------- */
 
-  const metrics = useMemo(() => consignmentMetrics(lines), [lines]);
+  const activeBreak = useMemo(
+    () => breaks.find((b) => b.id === activeBreakId) ?? breaks[0] ?? null,
+    [breaks, activeBreakId],
+  );
+
+  // Everything downstream — totals, packing, costing, the 3D view — runs on the
+  // scaled quantities, so switching break switches the whole estimate.
+  const activeLines = useMemo(
+    () => (activeBreak && activeBreak.multiplier !== 1 ? scaleLines(lines, activeBreak.multiplier) : lines),
+    [lines, activeBreak],
+  );
+
+  const metrics = useMemo(() => consignmentMetrics(activeLines), [activeLines]);
 
   const palletType = useMemo(
     () => palletTypes.find((p) => p.id === palletTypeId) ?? null,
@@ -327,28 +526,31 @@ export function EstimateProvider({ children }: { children: ReactNode }) {
 
   const palletBuilds = useMemo(() => {
     if (loadingMode !== 'palletised' || !palletType) return [];
-    return palletiseAll(lines.filter((l) => l.qty > 0 && l.lengthMm > 0), {
+    return palletiseAll(activeLines.filter((l) => l.qty > 0 && l.lengthMm > 0), {
       palletType,
       ...palletOverrides,
       palletTareKg: settings?.palletTareKg,
     }).builds;
-  }, [loadingMode, palletType, lines, palletOverrides, settings]);
+  }, [loadingMode, palletType, activeLines, palletOverrides, settings]);
 
   const packItems = useMemo(() => {
     if (loadingMode === 'palletised' && palletType) {
-      return palletPackItems(palletBuilds, lines, palletType, settings?.palletTareKg);
+      return palletPackItems(palletBuilds, activeLines, palletType, settings?.palletTareKg);
     }
-    return cartonPackItems(lines);
-  }, [loadingMode, palletType, palletBuilds, lines, settings]);
+    return cartonPackItems(activeLines);
+  }, [loadingMode, palletType, palletBuilds, activeLines, settings]);
 
   const issues = useMemo(() => {
-    const list: Issue[] = validateAll(lines.filter((l) => l.qty > 0), containerTypes);
+    const list: Issue[] = validateAll(activeLines.filter((l) => l.qty > 0), containerTypes);
     if (loadingMode === 'palletised' && palletType) {
       for (const b of palletBuilds) list.push(...validatePalletBuild(b, palletType));
       for (const c of containerTypes) list.push(...validatePalletInContainer(palletType, c));
     }
     return list;
-  }, [lines, containerTypes, loadingMode, palletType, palletBuilds]);
+  }, [activeLines, containerTypes, loadingMode, palletType, palletBuilds]);
+
+  metricsRef.current = metrics;
+  activeBreakRef.current = activeBreak;
 
   const comparison = useMemo(() => {
     if (metrics.totalVolumeCbm <= 0 || containerTypes.length === 0) return null;
@@ -381,6 +583,12 @@ export function EstimateProvider({ children }: { children: ReactNode }) {
   const value: EstimateState = {
     lines,
     setLines,
+    activeLines,
+    breaks,
+    setBreaks,
+    activeBreakId,
+    setActiveBreakId,
+    activeBreak,
     addLine,
     updateLine,
     removeLine,
@@ -414,6 +622,13 @@ export function EstimateProvider({ children }: { children: ReactNode }) {
     setForecastWindowMonths,
     rateBasisLabel,
     forecastRatios,
+    dirty,
+    saving,
+    saveError,
+    lastSavedAt,
+    saveJob,
+    loadJob,
+    resetJob,
     activeRates,
     ratesLoading,
     reloadRates,

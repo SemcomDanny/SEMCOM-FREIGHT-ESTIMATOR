@@ -13,7 +13,6 @@ interface RfqRow {
   lane: string;
   forwarder_email: string;
   forwarder_name: string | null;
-  currency: string;
   status: string;
   expired: boolean;
   created_at: string;
@@ -151,7 +150,7 @@ export function RfqRequests({
     <>
       <Card
         title="Request rates from a forwarder"
-        subtitle={`One click sends a link for ${laneLabel}. They fill it in — no account needed — and you import it as a rate version.`}
+        subtitle={`One click sends a link for ${laneLabel}, quoted FOB in AUD with delivery to a metro address included. They fill it in — no account needed — and you import it as a rate version.`}
       >
         <div className="flex flex-wrap items-end gap-3 p-4">
           <label className="block">

@@ -24,7 +24,6 @@ interface JobActualRow {
 /** Saving a job, recording the invoiced freight, and the landed-cost check. */
 export function JobPanel({ estimate }: { estimate: CostEstimate | null }) {
   const est = useEstimate();
-  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [results, setResults] = useState<JobResultRow[]>([]);
   const [actuals, setActuals] = useState<JobActualRow[]>([]);
@@ -52,61 +51,6 @@ export function JobPanel({ estimate }: { estimate: CostEstimate | null }) {
   const flash = (text: string) => {
     setMessage(text);
     setTimeout(() => setMessage(null), 5000);
-  };
-
-  const saveJob = async () => {
-    if (!est.job.ref.trim()) {
-      flash('Give the job a quote reference before saving.');
-      return;
-    }
-    setSaving(true);
-    try {
-      const payload = {
-        ref: est.job.ref,
-        client: est.job.client,
-        laneId: est.laneId,
-        status: est.job.status,
-        incoterm: est.job.incoterm,
-        commodity: est.job.commodity,
-        hsCode: est.job.hsCode,
-        cargoReadyDate: est.job.cargoReadyDate || null,
-        dangerousGoods: est.job.dangerousGoods,
-        loadingMode: est.loadingMode,
-        palletTypeId: est.loadingMode === 'palletised' ? est.palletTypeId : null,
-        stowEfficiency: est.stowEfficiency,
-        fxOverride: est.fxOverride,
-        notes: est.job.notes,
-        lines: est.lines.filter((l) => l.qty > 0 && l.lengthMm > 0),
-      };
-      const saved = est.job.id
-        ? await api.put<{ job: { id: string } }>(`/jobs/${est.job.id}`, payload)
-        : await api.post<{ job: { id: string } }>('/jobs', payload);
-      const jobId = saved.job.id;
-      est.setJob({ id: jobId });
-
-      if (estimate) {
-        await api.post(`/jobs/${jobId}/results`, {
-          modeSelected: estimate.mode,
-          rateCardId: estimate.components[0]?.sourceRateCardId ?? null,
-          totalCost: estimate.totalAud,
-          breakdown: {
-            basis: estimate.basis,
-            currency: estimate.currency,
-            fxToAud: estimate.fxToAud,
-            components: estimate.components,
-            metrics: est.metrics,
-            containerMix: estimate.containerMix,
-            stowEfficiency: est.stowEfficiency,
-          },
-        });
-      }
-      await refresh(jobId);
-      flash(`Saved ${est.job.ref}${estimate ? ` with the ${estimate.mode} estimate` : ''}.`);
-    } catch (err) {
-      flash((err as Error).message);
-    } finally {
-      setSaving(false);
-    }
   };
 
   const saveActual = async () => {
@@ -143,78 +87,31 @@ export function JobPanel({ estimate }: { estimate: CostEstimate | null }) {
 
   return (
     <div className="space-y-3">
-      <Card
-        title="Job"
-        subtitle={est.job.id ? `Saved as ${est.job.id}` : 'Not saved yet'}
-        actions={
-          <button className="btn-primary" disabled={saving} onClick={() => void saveJob()}>
-            {saving ? 'Saving…' : est.job.id ? 'Save new version' : 'Save job'}
-          </button>
-        }
-      >
+      <Card title="Saved estimates" subtitle={est.job.id ? `Job ${est.job.ref}` : 'Not saved yet'}>
         {message && (
           <div className="px-4 pt-3">
             <Banner tone="info">{message}</Banner>
           </div>
         )}
-        <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
-          <label className="block">
-            <span className="label">Job / quote ref</span>
-            <input
-              className="field mt-1"
-              placeholder="Q-2026-118"
-              value={est.job.ref}
-              onChange={(e) => est.setJob({ ref: e.target.value })}
-            />
-          </label>
-          <label className="block">
-            <span className="label">Client</span>
-            <input
-              className="field mt-1"
-              value={est.job.client}
-              onChange={(e) => est.setJob({ client: e.target.value })}
-            />
-          </label>
-          <label className="block">
-            <span className="label">Status</span>
-            <select
-              className="field mt-1"
-              value={est.job.status}
-              onChange={(e) => est.setJob({ status: e.target.value as typeof est.job.status })}
-            >
-              {(['Draft', 'Quoted', 'Won', 'Lost'] as const).map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-          </label>
-          <div>
-            <span className="label">Saved estimates</span>
-            <div className="tabular mt-1 text-sm">
-              {results.length === 0 ? (
-                <span className="text-slate-500">none yet</span>
-              ) : (
-                <span>
-                  {results.length} version(s), latest {fmt.money(results[0]!.total_cost)} (
-                  {results[0]!.mode_selected})
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {results.length > 0 && (
-          <div className="border-t border-slate-200 px-4 py-2">
-            <div className="label mb-1">Version history</div>
-            <ul className="space-y-0.5 text-xs text-slate-600">
-              {results.map((r) => (
-                <li key={r.id} className="tabular">
-                  {r.calculated_at.slice(0, 16).replace('T', ' ')} — {r.mode_selected}{' '}
-                  {fmt.money(r.total_cost)}
-                  {r.rate_card_id && <span className="text-slate-400"> · rate {r.rate_card_id}</span>}
-                </li>
-              ))}
-            </ul>
-          </div>
+        {results.length === 0 ? (
+          <p className="p-4 text-sm text-slate-500">
+            Nothing saved against this job yet. Use Save job at the bottom of the screen — each save
+            records the estimate as it stood, so you can see what was quoted and when.
+          </p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {results.map((r) => (
+              <li key={r.id} className="px-4 py-2 text-sm">
+                <span className="tabular">{r.calculated_at.slice(0, 16).replace('T', ' ')}</span>
+                {' — '}
+                <span className="font-medium">{r.mode_selected}</span>{' '}
+                <span className="tabular">{fmt.money(r.total_cost)}</span>
+                {r.rate_card_id && (
+                  <span className="ml-2 text-xs text-slate-400">rate {r.rate_card_id}</span>
+                )}
+              </li>
+            ))}
+          </ul>
         )}
       </Card>
 

@@ -109,7 +109,7 @@ function writeLines(jobId: string, lines: CartonLine[]): void {
 const JOB_FIELDS = [
   'ref', 'client', 'lane_id', 'status', 'incoterm', 'commodity', 'hs_code',
   'cargo_ready_date', 'dangerous_goods', 'loading_mode', 'pallet_type_id',
-  'stow_efficiency', 'fx_override', 'notes',
+  'stow_efficiency', 'fx_override', 'notes', 'breaks_json',
 ] as const;
 
 const BODY_KEYS: Record<(typeof JOB_FIELDS)[number], string> = {
@@ -127,6 +127,7 @@ const BODY_KEYS: Record<(typeof JOB_FIELDS)[number], string> = {
   stow_efficiency: 'stowEfficiency',
   fx_override: 'fxOverride',
   notes: 'notes',
+  breaks_json: 'breaksJson',
 };
 
 jobsRouter.post('/', (req, res) => {
@@ -140,8 +141,8 @@ jobsRouter.post('/', (req, res) => {
   db.prepare(
     `INSERT INTO jobs (id, ref, client, lane_id, status, incoterm, commodity, hs_code, cargo_ready_date,
                        dangerous_goods, loading_mode, pallet_type_id, stow_efficiency, fx_override, notes,
-                       created_by, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                       breaks_json, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     body.ref,
@@ -158,6 +159,7 @@ jobsRouter.post('/', (req, res) => {
     body.stowEfficiency ?? 0.85,
     body.fxOverride ?? null,
     body.notes ?? null,
+    body.breaks ? JSON.stringify(body.breaks) : null,
     req.user!.id,
     now,
     now,
@@ -180,10 +182,14 @@ jobsRouter.put('/:id', (req, res) => {
   const params: unknown[] = [];
   const changes: Record<string, unknown> = {};
   for (const column of JOB_FIELDS) {
-    const key = BODY_KEYS[column];
+    // The client sends `breaks` as an array; everything else is a scalar.
+    const key = column === 'breaks_json' ? 'breaks' : BODY_KEYS[column];
     if (body[key] === undefined) continue;
     let value = body[key];
     if (column === 'dangerous_goods') value = value ? 1 : 0;
+    if (column === 'breaks_json' && value !== null && typeof value !== 'string') {
+      value = JSON.stringify(value);
+    }
     if (value !== existing[column]) changes[column] = value;
     sets.push(`${column} = ?`);
     params.push(value);
@@ -209,8 +215,8 @@ jobsRouter.post('/:id/duplicate', (req, res) => {
   db.prepare(
     `INSERT INTO jobs (id, ref, client, lane_id, status, incoterm, commodity, hs_code, cargo_ready_date,
                        dangerous_goods, loading_mode, pallet_type_id, stow_efficiency, fx_override, notes,
-                       created_by, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                       breaks_json, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'Draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     req.body?.ref ?? `${j.ref} (copy)`,
@@ -226,6 +232,7 @@ jobsRouter.post('/:id/duplicate', (req, res) => {
     j.stow_efficiency ?? 0.85,
     j.fx_override ?? null,
     j.notes ?? null,
+    j.breaks_json ?? null,
     req.user!.id,
     now,
     now,
