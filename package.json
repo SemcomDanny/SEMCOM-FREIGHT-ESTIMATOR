@@ -3,7 +3,11 @@
   "private": true,
   "version": "0.1.0",
   "description": "Internal freight estimating & container loading tool for Semcom",
-  "workspaces": ["engine", "server", "web"],
+  "workspaces": [
+    "engine",
+    "server",
+    "web"
+  ],
   "scripts": {
     "build:engine": "npm run build -w @semcom/engine",
     "test": "npm run test -w @semcom/engine",
@@ -11,11 +15,15 @@
     "dev:server": "npm run dev -w @semcom/server",
     "dev:web": "npm run dev -w @semcom/web",
     "build": "npm run build:engine && npm run build -w @semcom/web && npm run build -w @semcom/server",
-    "start": "npm run start -w @semcom/server"
+    "start": "node --env-file-if-exists=.env server/dist/index.js",
+    "setup": "node scripts/setup-env.mjs",
+    "backup": "node --env-file-if-exists=.env scripts/backup.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
     "typescript": "^5.7.3"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }

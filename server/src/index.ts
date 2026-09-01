@@ -2,6 +2,7 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { migrate } from './db.js';
 import { assertProductionConfig } from './security.js';
@@ -54,6 +55,25 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 });
 
 app.listen(PORT, () => {
+  // On an office machine the useful address is the one other computers can
+  // reach, so print those rather than just localhost.
+  const addresses = Object.values(os.networkInterfaces())
+    .flat()
+    .filter((i): i is os.NetworkInterfaceInfo => !!i && i.family === 'IPv4' && !i.internal)
+    .map((i) => i.address);
+
   // eslint-disable-next-line no-console
-  console.log(`Semcom freight estimator API listening on http://localhost:${PORT}`);
+  console.log(`\nSemcom Freight Estimator is running.\n`);
+  // eslint-disable-next-line no-console
+  console.log(`  On this computer:   http://localhost:${PORT}`);
+  for (const address of addresses) {
+    // eslint-disable-next-line no-console
+    console.log(`  On the network:     http://${address}:${PORT}`);
+  }
+  if (addresses.length === 0) {
+    // eslint-disable-next-line no-console
+    console.log('  (no network address found — other computers will not be able to reach this)');
+  }
+  // eslint-disable-next-line no-console
+  console.log('\nLeave this window open. Closing it stops the tool for everyone.\n');
 });

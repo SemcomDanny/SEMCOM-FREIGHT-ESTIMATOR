@@ -53,16 +53,19 @@ npm run dev               # API on :4000, Vite on :5173
 Sign in with the seeded admin (`SEED_ADMIN_EMAIL`, default
 `admin@sem.com.au`). **Change that password before anyone else uses the tool.**
 
-Production, single container:
+**To run it for the team, see [DEPLOY.md](DEPLOY.md).** The short version:
 
 ```bash
-docker build -t semcom-freight .
-docker run -p 4000:4000 -v semcom-data:/app/data --env-file .env semcom-freight
+npm install && npm run setup && npm run build && npm start
 ```
 
-The API serves the built frontend, so there is one process and one port. The
-SQLite file under `/app/data` holds every rate version, job and audit record —
-back it up.
+The API serves the built frontend, so there is one process and one port, and
+everyone else reaches it on the host machine's network address. A Dockerfile is
+included if you would rather run it as a container.
+
+Everything lives in one SQLite file (`data/semcom.db`) — every rate version,
+job and audit record. `npm run backup` takes a safe copy while the tool is
+running. Set it up on a schedule; see DEPLOY.md.
 
 There is no public sign-up. An admin creates users under Admin → Users.
 

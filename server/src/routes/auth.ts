@@ -21,10 +21,14 @@ authRouter.post('/login', throttle.middleware, (req, res) => {
   }
   throttle.recordSuccess(req);
   const token = signToken(user);
+  // A "secure" cookie is only sent back over HTTPS. On an office LAN this runs
+  // over plain HTTP, so the flag follows the actual request scheme (behind a
+  // proxy, the forwarded one) rather than NODE_ENV — otherwise every sign-in
+  // on the LAN would appear to succeed and then immediately fail.
   res.cookie('token', token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: req.secure || process.env.COOKIE_SECURE === 'true',
     maxAge: 12 * 3600 * 1000,
   });
   res.json({ user, token });
