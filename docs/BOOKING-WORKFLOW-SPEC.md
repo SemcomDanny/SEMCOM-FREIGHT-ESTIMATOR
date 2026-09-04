@@ -301,14 +301,82 @@ point — and it is achievable in weeks, unlike a CargoWise feed, which needs th
 forwarder's IT department to agree to build something for you.
 
 Write every source through **one shipment-update path** with a source ranking —
-carrier feed beats forwarder submission beats manual entry — so a later, better
-source can correct an earlier one without a special case.
+carrier feed beats forwarder portal beats forwarder email beats manual entry —
+so a later, better source can correct an earlier one without a special case.
+
+### Forwarder portals (Logixboard and similar)
+
+Our forwarders use **Logixboard**, so it is worth being precise about what that
+does and does not give us.
+
+Logixboard is sold **to forwarders**, not to shippers. It is a white-label
+customer-experience layer: the forwarder licenses it, and it ingests from their
+TMS — CargoWise, Descartes and the rest — by API, FTP file drop or database
+sync, then presents milestones, documents and tracking to that forwarder's
+customers under the forwarder's own branding. **The documented integrations all
+run inbound**, TMS into Logixboard. There is no publicly documented outbound API
+for a forwarder's customer to pull their own shipments into their own system.
+
+That does not mean the answer is no — it means the answer is not ours to give.
+Three routes, in the order worth trying:
+
+**1. The notification emails — free, and available today.** Portals of this kind
+email the customer on milestones: booking confirmed, departed, arrived,
+available for pickup, documents ready. Those emails land in the same inbox this
+spec is already parsing quote replies from. Point the same pipeline at them,
+match on the SO or B/L number, and file them through the standard update path.
+No permission needed, no integration project, and it works across every
+forwarder who sends notifications regardless of which portal they run. **Do this
+first.** It may well be enough.
+
+**2. Ask the forwarder for API access to their tenant.** Even if an API exists,
+it is scoped to the forwarder's tenancy and enabled by them — so this is a
+request to the forwarder, not a signup. It is a much lighter ask than a
+CargoWise feed, because giving a customer their own data is on-mission for a
+customer-experience product, where an eAdaptor feed is a bespoke integration
+project. Worth asking; not worth planning around until answered.
+
+The question to put to them, in one line:
+
+> Does your Logixboard portal expose an API or webhook we can use to pull our
+> own shipment milestones into our system, and if so what would we need from you
+> to enable it?
+
+**3. Carrier data direct.** Independent of the forwarder entirely, and the only
+route that keeps working when the forwarder is unresponsive. Covered in the
+table above.
+
+Design note: model the portal as **one more source behind the same interface**,
+ranked between the carrier feed and forwarder email. If access does arrive
+later, it is a new adapter and a row in the ranking, not a rework. If it never
+arrives, nothing was built on the assumption that it would.
 
 ---
 
 ## Stage 6 — Chasing, only where it earns its place
 
-A daily job. Chase against **expected milestone dates**, never elapsed silence.
+**One low-frequency scheduled job, running daily.** It walks every active order
+and decides, per order, whether an update is due — from **that shipment's own
+dates**, not a fixed cadence. There is no per-shipment timer, no queue of
+scheduled sends, and nothing to clean up when a shipment changes shape: the
+decision is recomputed from current state each morning.
+
+```
+daily job:
+  for each order where status is active:
+    facts   = what we know (dates, numbers, documents present)
+    due     = triggers whose condition is met and whose fact is still missing
+    unsent  = due minus what has already been sent for this order
+    for each unsent trigger:
+      send it, record it
+```
+
+Daily is the right frequency. Every trigger below is measured in days, the
+recurring database cost is negligible, and the trade-off — missing an event by
+up to 24 hours — is the correct one for ocean freight. Do not build a
+higher-frequency job for this.
+
+Chase against **expected milestone dates**, never elapsed silence.
 Shenzhen–Sydney is 14–18 days with genuinely nothing to report mid-ocean;
 chasing into that void trains the forwarder to ignore you, which poisons the
 triggers that matter.
@@ -322,10 +390,25 @@ triggers that matter.
 | Delivered, no POD after 3 days | POD request |
 | Quote validity expires with the order not yet booked | Re-request, notify us |
 
-Every chaser stops the moment the fact arrives **from any source**. Suppress all
-of them for a forwarder whose data arrives by feed. Escalation needs a named
-owner on the order and a queue in the portal — escalation into a shared inbox is
-a fourth email nobody owns.
+Four rules make this behave:
+
+- **Once per condition per order.** A `freight_order_nudges` row — order id,
+  trigger key, sent at — is written on send and checked before the next. Without
+  it the daily job re-sends the same reminder every morning until the condition
+  clears, which is how an automated chaser becomes an ignored one.
+- **Stop the moment the fact arrives, from any source.** The trigger tests for
+  the missing fact, not for a reply. If a departure date arrives from the
+  carrier feed, the "has it sailed?" chaser never fires — even though the
+  forwarder never answered.
+- **Suppress everything for a forwarder whose data arrives by feed.** Per
+  forwarder flag. Chasing someone who is already pushing you the answer is worse
+  than not chasing at all.
+- **Escalation needs a named owner and a queue.** Every order carries an owner;
+  escalation raises it to them in the portal, not into a shared inbox where a
+  fourth email goes unread.
+
+Log every send against the order, so who was chased and when is visible on the
+shipment rather than buried in a mail server.
 
 ---
 
@@ -375,8 +458,14 @@ a fourth email nobody owns.
     before a container number exists.
 14. A carrier-sourced ATD overwrites a forwarder-sourced one; the reverse does
     not.
-15. Every chaser stops when the fact it asks for arrives from any source.
-16. The kill switch stops all auto-approval without a deploy.
+15. Every chaser stops when the fact it asks for arrives from any source,
+    including a source other than the forwarder being chased.
+16. A given chaser fires once per condition per order, however many times the
+    daily job runs while the condition holds.
+17. Chasers are fully suppressed for a forwarder marked as feed-connected.
+18. A parsed portal notification email files through the same update path as a
+    manual entry and is ranked above it.
+19. The kill switch stops all auto-approval without a deploy.
 
 ---
 
@@ -387,8 +476,10 @@ a fourth email nobody owns.
 3. Inbound email capture and deterministic block parsing.
 4. The decision function, with tests, behind a default-off flag.
 5. LLM extraction for PDFs and free text.
-6. Identifiers, validation, and one tracking source.
-7. Milestone chasers.
+6. Identifiers, validation, and portal notification-email parsing — the
+   cheapest tracking source and the one needing nobody's permission.
+7. Milestone chasers on the daily job.
+8. A paid carrier or aggregator feed, once the identifiers prove reliable.
 
-Stages 1–4 are usable without 5–7: even with every quote going to review, the
+Stages 1–4 are usable without 5–8: even with every quote going to review, the
 frozen baseline and the reconciled comparison are worth having on their own.
