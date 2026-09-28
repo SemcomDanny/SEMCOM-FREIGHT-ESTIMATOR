@@ -26,20 +26,37 @@ jobs and quantity breaks.
 - Imported directly from the Freight Hub for the matching quantity break, not
   re-entered. The freight figure already exists there against that break.
 
-**Overseas allowance**
-- Toggle on a line whose origin is not Australia: multiply its cost by **1.10**
-  (freight & GST allowance) **in the origin currency, before conversion**.
-- US$100 → US$110 → convert to AUD.
+**Offshore allowance** (the "10%")
+- Despite the legacy name *freight & GST allowance*, it is **an arbitrary company
+  buffer** against overseas suppliers under-quoting and against communication
+  error. It is not freight and not GST, so it does not double-count the freight
+  imported from the Freight Hub. Name it what it is in the UI.
+- **One toggle per quote, applied to every offshore line** — not per line item.
+- Multiply by **1.10 in the origin currency, before conversion**. US$100 →
+  US$110 → convert.
+- **Offshore = any origin except Australia.** New Zealand counts as offshore
+  manufacturing and gets the allowance.
 - The ×1.10 and the FX multiply commute, so the AUD figure is the same either
   way — but the line must **display the grossed-up origin-currency figure**, so
-  do it in this order and carry full precision, rounding only for display.
+  apply it in this order and carry full precision, rounding only for display.
+
+**FX**
+- Rates from **xe.com, refreshed daily**.
+- Apply a **5% buffer**: `rate_used = xe_rate × 1.05`. Buffer applies to any
+  non-AUD conversion; AUD lines are unaffected.
+- Store `xe_rate`, the buffer and `rate_used` **on the quote**, so it reproduces
+  later rather than re-converting at today's rate.
+- Note the two buffers stack on an offshore line: `1.10 × 1.05 = 1.155`, a
+  **15.5% uplift before markup**. Deliberate and for different risks, but worth
+  being a visible number rather than a surprise.
 
 **Price**
 
 Per line:
 ```
-adjusted_origin = cost_in_origin_currency × (overseas_toggle ? 1.10 : 1.00)
-line_aud        = adjusted_origin × fx_to_aud(origin_currency)
+adjusted_origin = cost_in_origin_currency × (offshore_toggle && origin != AU ? 1.10 : 1.00)
+rate_used       = xe_rate(origin_currency → AUD) × 1.05      -- 1.00 for AUD lines
+line_aud        = adjusted_origin × rate_used
 ```
 
 Then:
@@ -75,42 +92,35 @@ Alternative: **client fixed markup**. Only arrangement so far is
 
 ## Settled
 
-- **Markup, not margin.** `price = base × (1 + rate)`.
-- **Base is goods + freight**, both in AUD, goods after the overseas allowance.
-- **Overseas allowance is ×1.10 in origin currency, before FX.**
+- **Markup, not margin.** `price = base × (1 + rate)`. $100 cost → $135.
+- **Base is always goods + freight**, in AUD — for the price *and* for the
+  $15k/$150k band test.
+- **Offshore allowance is ×1.10 in origin currency, before FX**, toggled once
+  per quote, applied to every non-Australian line.
+- **New Zealand is offshore.**
+- **FX is xe.com daily + a 5% buffer.**
+- The 10% is a risk buffer, not freight or GST — no double-count with the
+  Freight Hub figure.
 
 ## Still to decide
 
-1. **Does the 10% double-count freight?** It is described as a *freight & GST*
-   allowance, but actual freight is added separately from the Freight Hub. If
-   the 10% is mostly the GST on import — 10% of the taxable value, which lines
-   up — then the naming is just legacy and nothing is wrong. If it genuinely
-   carries freight too, overseas goods are being marked up on freight counted
-   twice. Either is a fine commercial decision; worth being a decision.
-2. **Toggle scope.** Per line, or one switch for the whole quote? Suggest per
-   line, defaulted **on** for any non-Australian origin and overridable — that
-   matches "for anything coming from overseas" while allowing the exception.
-3. **Is NZ overseas?** Geographically yes, so the default catches it. Confirm
-   that is wanted, given no duty applies and the freight profile is different.
-4. **Which figure tests the band?** Assumed `base_aud` — goods + freight after
-   allowance — for the $15k/$150k thresholds. Note this makes the markup rate
-   move with quantity, since freight and goods both scale per break. That is
-   probably right, but it means the same job quotes at different markup rates
-   across its breaks, and the quote should show which rate each break used.
-5. **Above $150k?** Assumed held at 25%.
-6. **Kenvue's 25.25%.** Internal rule is markup, but a client arrangement is
-   often negotiated as margin. Worth confirming which was agreed — 25.25%
-   markup is a 20.2% gross margin.
-7. **FX rates — source and storage.** Where AUD/NZD/USD rates come from, and a
-   quote must reproduce later, so store the rate used on the quote rather than
-   re-converting at read time. Same discipline the Freight Hub uses for rate
-   versions.
-8. **Quantity break matching.** Freight Hub breaks are scale factors on a base
+1. **Above $150k?** Assumed the markup holds at 25%.
+2. **Kenvue's 25.25%.** The internal rule is markup, but a client arrangement is
+   often negotiated as margin. Worth confirming which was agreed — 25.25% markup
+   is a 20.2% gross margin.
+3. **The markup rate moves between quantity breaks.** Because the band is tested
+   on goods + freight and both scale with quantity, a 100-unit break may sit at
+   35% while a 500-unit break falls to 31%. Probably intended — bigger order,
+   thinner markup — but each break must show the rate it resolved to, or it
+   reads as an error.
+4. **Quantity break matching.** Freight Hub breaks are scale factors on a base
    carton list carrying a unit count; Estimate Hub breaks are unit quantities.
    The import matches on units — confirm the mapping holds when a job's cartons
    have mixed units per carton.
-9. **Freight missing for a break.** What the quote shows when the Freight Hub
+5. **Freight missing for a break.** What the quote shows when the Freight Hub
    has no figure for that quantity — blank, estimated, or blocked.
+6. **Stale FX.** What happens if the daily xe.com refresh fails — last known
+   rate with a warning, or block the quote.
 
 ## Notes for the build
 
