@@ -1,0 +1,34 @@
+# Alternative to running Node directly — see DEPLOY.md for the simpler path.
+#
+#   docker compose up -d          start it, and keep it started across reboots
+#   docker compose logs -f        watch what it is doing
+#   docker compose down           stop it
+#
+# Set JWT_SECRET and SEED_ADMIN_PASSWORD in .env first (npm run setup writes
+# both), or the server will refuse to start.
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - '4000:4000'
+    environment:
+      NODE_ENV: production
+      PORT: '4000'
+      DB_PATH: /app/data/semcom.db
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env — run `npm run setup`}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@sem.com.au}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?set SEED_ADMIN_PASSWORD in .env — run `npm run setup`}
+    volumes:
+      # The database lives here. Back this up — see `npm run backup`.
+      - semcom-data:/app/data
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://localhost:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  semcom-data:
