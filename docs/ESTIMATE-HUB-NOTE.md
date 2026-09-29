@@ -9,7 +9,12 @@ jobs and quantity breaks.
 **Job**
 - Select an existing job by search — job name or job number.
 - Create a new quote against it.
-- Quantity breaks per quote, entered as unit quantities: 100, 200, 300, …
+- Quantity breaks are **named ordinals — Break 1, Break 2, Break 3, …** — created
+  by the user, each carrying its own unit quantity (Break 1 = 100 units,
+  Break 2 = 200, Break 3 = 500).
+- **Both apps use the same structure, and the match is by ordinal:** Freight Hub
+  Break 1 ↔ Estimate Hub Break 1. Not by unit count.
+- Each break can carry different item quantities on the Estimate Hub side.
 
 **Cost lines**
 - Repeating list. Per line: quantity, total cost (input), and **cost per unit
@@ -22,9 +27,18 @@ jobs and quantity breaks.
 - All lines converted and totalled in **AUD**.
 - Display toggle for AUD / NZD / USD. Display only — AUD stays the base.
 
-**Freight**
-- Imported directly from the Freight Hub for the matching quantity break, not
-  re-entered. The freight figure already exists there against that break.
+**Freight — three modes per quote**
+1. **Linked** — imported from the Freight Hub for the matching break ordinal.
+2. **Manual** — freight cost typed in directly, no link.
+3. **None** — no freight line at all.
+
+Linked but unresolvable (no figure saved yet, or no matching break):
+- **Warn**, but still create the freight line at **$0**, marked *to be added in
+  Freight Hub*.
+- **Re-match later**: when the Freight Hub figure appears, the quote picks it up.
+- A $0 freight line understates `base_aud`, so both the markup rate and the
+  price come out low. The warning must survive as far as the quote output — see
+  the hazards below.
 
 **Offshore allowance** (the "10%")
 - Despite the legacy name *freight & GST allowance*, it is **an arbitrary company
@@ -46,6 +60,8 @@ jobs and quantity breaks.
   non-AUD conversion; AUD lines are unaffected.
 - Store `xe_rate`, the buffer and `rate_used` **on the quote**, so it reproduces
   later rather than re-converting at today's rate.
+- **If the daily refresh fails**, use the latest known rate and **flag it before
+  output** — carry the rate's age on the warning.
 - Note the two buffers stack on an offshore line: `1.10 × 1.05 = 1.155`, a
   **15.5% uplift before markup**. Deliberate and for different risks, but worth
   being a visible number rather than a surprise.
@@ -83,8 +99,9 @@ reads and people will otherwise assume they are the same:
 - `markup% = 35 − 10 × (base_aud − 15,000) / 135,000`, clamped to 25–35
 - check: $15k → 35%, $82.5k → 30%, $150k → 25%
 
-Alternative: **client fixed markup**. Only arrangement so far is
-**Kenvue = 25.25%**. No others yet — build the table, seed the one row.
+Alternative: **client fixed markup**. Only arrangement so far is **Kenvue =
+25.25% markup** — confirmed: $10,000 cost quotes at **$12,525**. No others yet —
+build the table, seed the one row.
 
 **Output**
 - Quote disclaimers, editable in settings.
@@ -102,25 +119,47 @@ Alternative: **client fixed markup**. Only arrangement so far is
 - The 10% is a risk buffer, not freight or GST — no double-count with the
   Freight Hub figure.
 
-## Still to decide
+## All resolved
 
-1. **Above $150k?** Assumed the markup holds at 25%.
-2. **Kenvue's 25.25%.** The internal rule is markup, but a client arrangement is
-   often negotiated as margin. Worth confirming which was agreed — 25.25% markup
-   is a 20.2% gross margin.
-3. **The markup rate moves between quantity breaks.** Because the band is tested
-   on goods + freight and both scale with quantity, a 100-unit break may sit at
-   35% while a 500-unit break falls to 31%. Probably intended — bigger order,
-   thinner markup — but each break must show the rate it resolved to, or it
-   reads as an error.
-4. **Quantity break matching.** Freight Hub breaks are scale factors on a base
-   carton list carrying a unit count; Estimate Hub breaks are unit quantities.
-   The import matches on units — confirm the mapping holds when a job's cartons
-   have mixed units per carton.
-5. **Freight missing for a break.** What the quote shows when the Freight Hub
-   has no figure for that quantity — blank, estimated, or blocked.
-6. **Stale FX.** What happens if the daily xe.com refresh fails — last known
-   rate with a warning, or block the quote.
+- Kenvue 25.25% is **markup** — $10,000 cost → $12,525 quoted.
+- The markup rate moves between breaks by design: more quantity, lower rate,
+  **floored at 25%** once `base_aud` reaches $150,000.
+- Breaks are matched **by ordinal**, Break N ↔ Break N.
+- Freight has three modes; linked-but-missing yields a warned $0 line that
+  re-matches later.
+- A failed FX refresh falls back to the last known rate, flagged before output.
+
+## Two hazards to design against
+
+**1. Ordinal matching can silently mismatch quantities.** Break 2 means "the
+second break" in each app, not "200 units". If someone inserts a break in one
+app and not the other, Break 2 in the Estimate Hub is 200 units while Break 2 in
+the Freight Hub is now 150 — and the quote takes freight for the wrong quantity
+without complaining.
+
+Mitigation: match on ordinal as specified, but **carry the unit quantity from
+both sides and compare**. Where they disagree, show both figures and warn. Cheap
+to build, and it turns a silent wrong number into an obvious one.
+
+**2. A $0 freight line quietly produces a cheap quote.** It understates
+`base_aud`, which lowers the price *and* can push the quote into a higher markup
+band — so the error does not even look like an error. On a $1,800 freight cost
+that is most of the markup given away.
+
+Mitigation: the warning must follow the quote all the way to output. Suggest
+the template refuses to render a client-facing quote while a $0 placeholder is
+present, unless someone explicitly acknowledges it. Blocking is safer than a
+banner nobody reads.
+
+## Affects the Freight Hub
+
+The Freight Hub as built labels breaks *As entered / 2× / 3×* and stores a
+**multiplier** on a base carton list. To match Break N ↔ Break N, it needs the
+same **named-ordinal structure with an explicit unit quantity per break**.
+
+That is a change to the Freight Hub — small, but it has to land there first, and
+`docs/LOVABLE-REBUILD-PROMPT.md` needs the same edit so a rebuild does not
+reintroduce multipliers.
 
 ## Notes for the build
 
