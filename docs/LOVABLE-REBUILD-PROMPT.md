@@ -300,12 +300,18 @@ another. Per row: duplicate, save to carton library, delete. A collapsible
 **"Paste from Excel"** dialog that previews what it parsed, lists unreadable
 rows, and offers append or replace.
 
-**Quantity break tabs.** A row of tabs — "As entered", "2×", "3×", "+ Add
-quantity". The carton rows hold the *base* quantities; selecting a tab scales
-them and switches the **whole screen** — totals, packing, 3D view, costing — to
-that order size. "+ Add quantity" accepts either a target unit count or a
-multiple. Clients ask what freight costs at hypothetical MOQs and the answer is
-rarely proportional, so this must be one click, not a re-entry.
+**Quantity break tabs.** A row of tabs — **Break 1, Break 2, Break 3, …** — each
+created by the user and carrying **its own explicit unit quantity** (Break 1 =
+100 units, Break 2 = 200, Break 3 = 500). The carton rows hold the *base*
+quantities; selecting a tab scales them to that break's quantity and switches the
+**whole screen** — totals, packing, 3D view, costing. Clients ask what freight
+costs at hypothetical MOQs and the answer is rarely proportional, so this must be
+one click, not a re-entry.
+
+Name the breaks as **ordinals, not multipliers**: the Estimate Hub uses the same
+Break 1..N structure and **matches to this one by ordinal**, so the two must
+agree. Store the unit quantity on each break — the Estimate Hub reads it back to
+check both sides still describe the same order size.
 
 **Live totals bar.** Cartons, total volume, gross weight, density, chargeable
 (W/M) volume, units. Chargeable volume gets a hover explaining the max() rule.
